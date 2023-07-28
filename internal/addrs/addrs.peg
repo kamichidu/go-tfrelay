@@ -1,0 +1,21 @@
+package addrs
+
+type addrsParser Peg {
+    Out Addrs
+
+    v Addr
+}
+
+addrs <- addr ( '.' addr )* !.
+
+addr <- 'module'     '.' resourceName { p.pushModule() }
+      / resourceType '.' resourceName { p.pushResource() }
+
+resourceType <- <identifier> { p.setResourceType(text) }
+
+resourceName <- <identifier> { p.setResourceName(text) }
+                ( '[' <quotedString> ']' { p.setIndexKey(text) } )?
+
+identifier <- [a-zA-Z0-9-_]+
+
+quotedString <- '"' [^"]* '"'

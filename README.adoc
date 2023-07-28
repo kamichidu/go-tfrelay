@@ -1,0 +1,16 @@
+= tfrelay
+
+== How to Install
+
+[source,bash]
+----
+go get github.com/kamichidu/go-tfrelay/cmd/tfrelay-source-planfile
+----
+
+== How to Use
+
+[source,bash]
+----
+terraform paln -out ./planfile
+tfrelay-source-planfile ./planfile
+----
