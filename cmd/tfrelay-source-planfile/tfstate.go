@@ -101,17 +101,91 @@ func (s *tfState) applyCreate(change *planproto.ResourceInstanceChange) {
 
 func (s *tfState) applyUpdate(change *planproto.ResourceInstanceChange) {
 	addr := addrs.Parse(change.Addr)
-	oldValue := change.Change.Values[0]
-	newValue := change.Change.Values[1]
+	resource, ok := s.findResource(addr)
+	if !ok {
+		resource.Module = addr.Module()
+		resource.Mode = "managed"
+		resource.Type = addr.Type()
+		resource.Name = addr.Name()
+		// TODO: detect correct provider
+		resource.Provider = "tfrelay-source-planfile"
+	}
+	instance, ok := s.findInstance(addr)
+	if !ok {
+		instance.IndexKey = addr.IndexKey()
+		instance.Attributes = map[string]json.RawMessage{}
+	}
+	replaceInstance := ok
+	oldValue := mustDecodeMsgpack(change.Change.Values[0].Msgpack)
+	newValue := mustDecodeMsgpack(change.Change.Values[1].Msgpack)
 
-	log.Printf("debug: UPDATE %v %v\n\t=> %v", addr, mustDecodeMsgpack(oldValue.Msgpack).GoString(), mustDecodeMsgpack(newValue.Msgpack).GoString())
+	m1 := oldValue.AsValueMap()
+	m2 := newValue.AsValueMap()
+	log.Printf("debug: UPDATE %v %v\n\t=> %v", addr, m1, m2)
+	for k, v := range m2 {
+		if !v.IsWhollyKnown() {
+			continue
+		}
+		b, err := ctyjson.Marshal(v, v.Type())
+		if err != nil {
+			panic(err)
+		}
+		instance.Attributes[k] = json.RawMessage(b)
+	}
+
+	if replaceInstance {
+		for i := range resource.Instances {
+			if resource.Instances[i].IndexKey != instance.IndexKey {
+				continue
+			}
+			resource.Instances[i] = instance
+			break
+		}
+	} else {
+		resource.Instances = append(resource.Instances, instance)
+	}
+
+	s.putResource(addr, resource)
 }
 
 func (s *tfState) applyDelete(change *planproto.ResourceInstanceChange) {
 	addr := addrs.Parse(change.Addr)
-	delValue := change.Change.Values[0]
+	resource, ok := s.findResource(addr)
+	if !ok {
+		resource.Module = addr.Module()
+		resource.Mode = "managed"
+		resource.Type = addr.Type()
+		resource.Name = addr.Name()
+		// TODO: detect correct provider
+		resource.Provider = "tfrelay-source-planfile"
+	}
+	instance, ok := s.findInstance(addr)
+	if !ok {
+		instance.IndexKey = addr.IndexKey()
+		instance.Attributes = map[string]json.RawMessage{}
+	}
+	replaceInstance := ok
+	delValue := mustDecodeMsgpack(change.Change.Values[0].Msgpack)
 
-	log.Printf("debug: DELETE %v %v", addr, mustDecodeMsgpack(delValue.Msgpack).GoString())
+	m := delValue.AsValueMap()
+	log.Printf("debug: DELETE %v %v", addr, m)
+	for k := range m {
+		delete(instance.Attributes, k)
+	}
+
+	if replaceInstance {
+		for i := range resource.Instances {
+			if resource.Instances[i].IndexKey != instance.IndexKey {
+				continue
+			}
+			resource.Instances[i] = instance
+			break
+		}
+	} else {
+		resource.Instances = append(resource.Instances, instance)
+	}
+
+	s.putResource(addr, resource)
 }
 
 func (s *tfState) findInstance(addr addrs.Addrs) (tfInstance, bool) {
