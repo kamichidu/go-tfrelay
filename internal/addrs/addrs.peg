@@ -14,8 +14,10 @@ addr <- 'module'     '.' resourceName { p.pushModule() }
 resourceType <- <identifier> { p.setResourceType(text) }
 
 resourceName <- <identifier> { p.setResourceName(text) }
-                ( '[' <quotedString> ']' { p.setIndexKey(text) } )?
+                ( '[' ( <quotedString> / <number> ) ']' { p.setIndexKey(text) } )?
 
 identifier <- [a-zA-Z0-9-_]+
 
 quotedString <- '"' [^"]* '"'
+
+number <- [0-9]+

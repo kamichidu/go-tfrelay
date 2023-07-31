@@ -32,11 +32,19 @@ type tfResource struct {
 }
 
 type tfInstance struct {
-	IndexKey string `json:"index_key,omitempty"`
+	// string or number
+	IndexKey json.RawMessage `json:"index_key,omitempty"`
 
 	Attributes map[string]json.RawMessage `json:"attributes"`
 
 	SensitiveAttributes json.RawMessage `json:"sensitive_attributes"`
+}
+
+func (v tfInstance) IndexKeyString() string {
+	if !json.Valid(v.IndexKey) {
+		panic("invalid indexKey: " + string(v.IndexKey))
+	}
+	return string(v.IndexKey)
 }
 
 func (s *tfState) Apply(change *planproto.ResourceInstanceChange) {
@@ -65,7 +73,7 @@ func (s *tfState) applyCreate(change *planproto.ResourceInstanceChange) {
 	}
 	instance, ok := s.findInstance(addr)
 	if !ok {
-		instance.IndexKey = addr.IndexKey()
+		instance.IndexKey = json.RawMessage(addr.IndexKey())
 		instance.Attributes = map[string]json.RawMessage{}
 	}
 	replaceInstance := ok
@@ -86,7 +94,7 @@ func (s *tfState) applyCreate(change *planproto.ResourceInstanceChange) {
 
 	if replaceInstance {
 		for i := range resource.Instances {
-			if resource.Instances[i].IndexKey != instance.IndexKey {
+			if resource.Instances[i].IndexKeyString() != instance.IndexKeyString() {
 				continue
 			}
 			resource.Instances[i] = instance
@@ -112,7 +120,7 @@ func (s *tfState) applyUpdate(change *planproto.ResourceInstanceChange) {
 	}
 	instance, ok := s.findInstance(addr)
 	if !ok {
-		instance.IndexKey = addr.IndexKey()
+		instance.IndexKey = json.RawMessage(addr.IndexKey())
 		instance.Attributes = map[string]json.RawMessage{}
 	}
 	replaceInstance := ok
@@ -135,7 +143,7 @@ func (s *tfState) applyUpdate(change *planproto.ResourceInstanceChange) {
 
 	if replaceInstance {
 		for i := range resource.Instances {
-			if resource.Instances[i].IndexKey != instance.IndexKey {
+			if resource.Instances[i].IndexKeyString() != instance.IndexKeyString() {
 				continue
 			}
 			resource.Instances[i] = instance
@@ -161,7 +169,7 @@ func (s *tfState) applyDelete(change *planproto.ResourceInstanceChange) {
 	}
 	instance, ok := s.findInstance(addr)
 	if !ok {
-		instance.IndexKey = addr.IndexKey()
+		instance.IndexKey = json.RawMessage(addr.IndexKey())
 		instance.Attributes = map[string]json.RawMessage{}
 	}
 	replaceInstance := ok
@@ -175,7 +183,7 @@ func (s *tfState) applyDelete(change *planproto.ResourceInstanceChange) {
 
 	if replaceInstance {
 		for i := range resource.Instances {
-			if resource.Instances[i].IndexKey != instance.IndexKey {
+			if resource.Instances[i].IndexKeyString() != instance.IndexKeyString() {
 				continue
 			}
 			resource.Instances[i] = instance
@@ -201,7 +209,7 @@ func (s *tfState) findInstance(addr addrs.Addrs) (tfInstance, bool) {
 
 	var found []tfInstance
 	for _, v := range r.Instances {
-		if v.IndexKey != addrIndexKey {
+		if v.IndexKeyString() != addrIndexKey {
 			continue
 		}
 		found = append(found, v)

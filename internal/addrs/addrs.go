@@ -90,7 +90,7 @@ func Parse(s string) Addrs {
 func (p *addrsParser) pushModule() {
 	suffix := p.v.IndexKey
 	if suffix != "" {
-		suffix = `["` + suffix + `"]`
+		suffix = `[` + suffix + `]`
 	}
 	p.Out = append(p.Out, Addr{
 		Module: "module." + p.v.Name + suffix,
@@ -112,7 +112,5 @@ func (p *addrsParser) setResourceName(s string) {
 }
 
 func (p *addrsParser) setIndexKey(s string) {
-	s = strings.TrimPrefix(s, `"`)
-	s = strings.TrimSuffix(s, `"`)
 	p.v.IndexKey = s
 }
