@@ -15,6 +15,8 @@ type RelayConfig struct {
 type RelayPluginsConfig struct {
 	Source []RelayPluginConfig `yaml:"source"`
 
+	Transform []RelayPluginConfig `yaml:"transform"`
+
 	Sink []RelayPluginConfig `yaml:"sink"`
 }
 
