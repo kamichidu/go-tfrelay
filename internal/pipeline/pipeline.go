@@ -1,4 +1,4 @@
-package main
+package pipeline
 
 import (
 	"bytes"
@@ -17,13 +17,13 @@ import (
 	"github.com/kamichidu/go-tfrelay/internal/config"
 )
 
-type pipeline struct {
+type Pipeline struct {
 	Config *config.RelayConfig
 
 	ErrWriter io.Writer
 }
 
-func (p *pipeline) doSource(ctx context.Context) (io.Reader, error) {
+func (p *Pipeline) doSource(ctx context.Context) (io.Reader, error) {
 	fn := func(cfg config.RelayPluginConfig) (json.RawMessage, error) {
 		var stdout bytes.Buffer
 		cmd := exec.CommandContext(ctx, cfg.Command, cfg.Args...)
@@ -53,7 +53,7 @@ func (p *pipeline) doSource(ctx context.Context) (io.Reader, error) {
 	return nil, errors.New("no sources")
 }
 
-func (p *pipeline) doSink(ctx context.Context) (io.WriteCloser, <-chan struct{}, error) {
+func (p *Pipeline) doSink(ctx context.Context) (io.WriteCloser, <-chan struct{}, error) {
 	var wg sync.WaitGroup
 	fn := func(cfg config.RelayPluginConfig, r io.Reader) {
 		defer wg.Done()
@@ -110,7 +110,7 @@ func (w *sinkWriter) Close() error {
 	return err
 }
 
-func (p *pipeline) Do(ctx context.Context) error {
+func (p *Pipeline) Do(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

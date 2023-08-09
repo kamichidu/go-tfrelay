@@ -45,24 +45,31 @@ func (v *RelayPluginConfig) GetEnv() []string {
 	return out
 }
 
-func LoadRelayConfig(dir string) (*RelayConfig, error) {
+func LoadRelayConfig(name string) (*RelayConfig, error) {
+	b, err := os.ReadFile(name)
+	if err != nil {
+		return nil, err
+	}
+
+	var out RelayConfig
+	if err := yaml.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func LoadRelayConfigFromDir(dir string) (*RelayConfig, error) {
 	names := []string{
 		filepath.Join(dir, ".terraform-relay.yaml"),
 		filepath.Join(dir, ".terraform-relay.yml"),
 	}
-	var out RelayConfig
 	for _, name := range names {
-		b, err := os.ReadFile(name)
-		if errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(name); errors.Is(err, os.ErrNotExist) {
 			continue
 		} else if err != nil {
 			return nil, err
 		}
-
-		if err := yaml.Unmarshal(b, &out); err != nil {
-			return nil, err
-		}
-		return &out, nil
+		return LoadRelayConfig(name)
 	}
-	return &out, nil
+	return nil, os.ErrNotExist
 }

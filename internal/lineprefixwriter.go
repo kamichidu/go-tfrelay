@@ -1,11 +1,11 @@
-package main
+package internal
 
 import (
 	"bytes"
 	"io"
 )
 
-type errWriter struct {
+type LinePrefixWriter struct {
 	Prefix string
 
 	Writer io.Writer
@@ -14,12 +14,12 @@ type errWriter struct {
 }
 
 var (
-	_ io.Writer = (*errWriter)(nil)
+	_ io.Writer = (*LinePrefixWriter)(nil)
 
 	lfBytes = []byte("\n")
 )
 
-func (w *errWriter) Write(p []byte) (int, error) {
+func (w *LinePrefixWriter) Write(p []byte) (int, error) {
 	if w.pfx == nil {
 		w.pfx = w.writePrefix
 	}
@@ -47,11 +47,11 @@ func (w *errWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (w *errWriter) writePrefix() error {
+func (w *LinePrefixWriter) writePrefix() error {
 	_, err := w.Writer.Write([]byte(w.Prefix))
 	return err
 }
 
-func (w *errWriter) nop() error {
+func (w *LinePrefixWriter) nop() error {
 	return nil
 }

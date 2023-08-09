@@ -1,0 +1,6 @@
+Usage:
+  terraform-relay [options]
+
+Available Options:
+  -h, --help     Show this message.
+  --config PATH  The configuration file path.
