@@ -41,6 +41,9 @@ type tfInstance struct {
 }
 
 func (v tfInstance) IndexKeyString() string {
+	if len(v.IndexKey) == 0 {
+		return ""
+	}
 	if !json.Valid(v.IndexKey) {
 		panic("invalid indexKey: " + string(v.IndexKey))
 	}

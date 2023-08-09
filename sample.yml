@@ -1,0 +1,29 @@
+---
+plugins:
+  source:
+    - command: tfrelay-source-planfile
+      args: [./planfile]
+  sink:
+    - command: tfrelay-sink-text
+      env:
+        TFRELAY_SINK_TEXT_OUTPUT: _dist/index.adoc
+        TFRELAY_SINK_TEXT_TEMPLATE: |
+          {{define "__not_found__" -}}
+          == {{$.Type}}
+
+          [%autowidth]
+          |===
+          {{$keys := unionKeys $.Instances -}}
+          {{range $header := $keys}}| {{$header}} {{end}}
+
+          {{range $instance := $.Instances -}}
+          {{range $col := extractColumns $instance $keys -}}
+          | {{$col}}
+          {{end}}
+          {{end -}}
+          |===
+          {{end -}}
+
+          {{range $resource := $.Resources -}}
+          {{evalTemplate $resource.Type $resource}}
+          {{end -}}

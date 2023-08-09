@@ -3,7 +3,7 @@ package addrs_test
 import (
 	"testing"
 
-	"github.com/kamichidu/go-tfrelay/addrs"
+	"github.com/kamichidu/go-tfrelay/internal/addrs"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -4,7 +4,7 @@
 
 [source,bash]
 ----
-go get github.com/kamichidu/go-tfrelay/cmd/tfrelay-source-planfile
+go get github.com/kamichidu/go-tfrelay/cmd/...
 ----
 
 == How to Use
@@ -12,5 +12,9 @@ go get github.com/kamichidu/go-tfrelay/cmd/tfrelay-source-planfile
 [source,bash]
 ----
 terraform paln -out ./planfile
-tfrelay-source-planfile ./planfile
+
+# Create config file, see sample.yml
+vim .terraform-relay.yml
+
+terraform-relay
 ----
