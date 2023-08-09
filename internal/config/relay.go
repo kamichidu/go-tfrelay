@@ -4,11 +4,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type RelayConfig struct {
+	TimeoutDuration time.Duration `yaml:"timeout"`
+
 	Plugins RelayPluginsConfig `yaml:"plugins"`
 }
 
@@ -56,6 +59,9 @@ func LoadRelayConfig(name string) (*RelayConfig, error) {
 	var out RelayConfig
 	if err := yaml.Unmarshal(b, &out); err != nil {
 		return nil, err
+	}
+	if out.TimeoutDuration == 0 {
+		out.TimeoutDuration = 5 * time.Minute
 	}
 	return &out, nil
 }

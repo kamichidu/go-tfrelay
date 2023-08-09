@@ -1,4 +1,6 @@
 ---
+timeout: 5m
+
 plugins:
   source:
     # automatic terraform-plan execution

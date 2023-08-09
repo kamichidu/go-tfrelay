@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/kamichidu/go-tfrelay/internal"
 	"github.com/kamichidu/go-tfrelay/internal/planproto"
 	"google.golang.org/protobuf/proto"
 )
@@ -40,7 +41,11 @@ func createPlanfile(command string, args ...string) (string, error) {
 	cmdArgs = append(cmdArgs, "--out", tmpfile.Name())
 
 	cmd := exec.Command(command, cmdArgs...)
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = &internal.LinePrefixWriter{
+		Prefix: "[ " + progName + " ] ",
+		Writer: os.Stderr,
+	}
+	cmd.Stderr = cmd.Stdout
 	if err := cmd.Run(); err != nil {
 		return "", err
 	}

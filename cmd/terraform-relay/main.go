@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"time"
 
 	"comail.io/go/colog"
 	"github.com/kamichidu/go-tfrelay/internal/config"
@@ -64,8 +63,9 @@ func run(stdout, stderr io.Writer, args []string) int {
 		return 1
 	}
 
+	log.Printf("debug: timeout %s", cfg.TimeoutDuration)
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, cfg.TimeoutDuration)
 	defer cancel()
 
 	pl := &pipeline.Pipeline{
