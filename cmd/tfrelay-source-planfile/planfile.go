@@ -4,6 +4,9 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"io"
+	"log"
+	"os"
+	"os/exec"
 
 	"github.com/kamichidu/go-tfrelay/internal/planproto"
 	"google.golang.org/protobuf/proto"
@@ -16,6 +19,33 @@ type planfile struct {
 var (
 	_ io.Closer = (*planfile)(nil)
 )
+
+func createPlanfile(command string, args ...string) (string, error) {
+	log.Printf("info: create planfile by %v %v", command, args)
+	tmpfile, err := os.CreateTemp("", "tfplan.*")
+	if err != nil {
+		return "", err
+	}
+	defer tmpfile.Close()
+	log.Printf("info: planfile will save at %v", tmpfile.Name())
+
+	var cmdArgs []string
+	for i := 0; i < len(args); i++ {
+		if args[i] != "--out" {
+			cmdArgs = append(cmdArgs, args[i])
+			continue
+		}
+		i = i + 1
+	}
+	cmdArgs = append(cmdArgs, "--out", tmpfile.Name())
+
+	cmd := exec.Command(command, cmdArgs...)
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return tmpfile.Name(), nil
+}
 
 func openPlanfile(name string) (*planfile, error) {
 	zr, err := zip.OpenReader(name)

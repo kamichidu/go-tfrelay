@@ -1,9 +1,14 @@
 ---
 plugins:
   source:
+    # automatic terraform-plan execution
     - command: tfrelay-source-planfile
-      args: [./planfile]
+      args: [--, terraform, plan]
+  transform:
+    # grouping resources by resource.type
+    - command: tfrelay-transform-groupby
   sink:
+    # generate asciidoc
     - command: tfrelay-sink-text
       env:
         TFRELAY_SINK_TEXT_OUTPUT: _dist/index.adoc

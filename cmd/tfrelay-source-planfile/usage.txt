@@ -1,0 +1,6 @@
+Usage:
+  tfrelay-source-planfile [options] {planfile}
+  tfrelay-source-planfile [options] -- {terraform-plan command}
+
+Available Options:
+  -h, --help     Show this message.
