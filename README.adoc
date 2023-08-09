@@ -5,6 +5,23 @@ tfrelay is an alpha state.
 
 == Overview
 
+image::_docs/overview.svg[]
+
+tfrelay relies on plugin system.
+plugin has a simple constraint below:
+
+. Read JSON data from STDIN
+. Write JSON data to STDOUT
+
+there are 3 kinds of plugins:
+
+Source plugin::
+    Data source, writes seed data to STDOUT.
+Transform plugin::
+    Data transforming, read seed data from STDIN, and writes transformed data to STDOUT.
+Sink plugin::
+    Data sink, read seed data from STDIN, and writes data to destination defined by each plugin.
+
 == Instruction
 
 === How to Install
