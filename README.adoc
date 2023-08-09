@@ -1,20 +1,35 @@
 = tfrelay
 
-== How to Install
+tfrelay is a toolset for pipelining for terraform's tfstate.
+tfrelay is an alpha state.
+
+== Overview
+
+== Instruction
+
+=== How to Install
 
 [source,bash]
 ----
-go get github.com/kamichidu/go-tfrelay/cmd/...
+go install github.com/kamichidu/go-tfrelay/cmd/...
 ----
 
-== How to Use
+=== How to Use
 
 [source,bash]
 ----
-terraform paln -out ./planfile
+terraform plan -out ./planfile
 
-# Create config file, see sample.yml
+# create config file, see sample.yml
 vim .terraform-relay.yml
 
+# will generate output depends on sink plugin
 terraform-relay
+----
+
+== Configuration
+
+[source,yaml]
+----
+include::sample.yml[]
 ----
