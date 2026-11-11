@@ -1,0 +1,45 @@
+{
+  "resources": [
+    {
+      "__id__": "<generated>",
+      "instances": [
+        {
+          "attributes": {
+            "id": "golden-stable-id-0",
+            "input": "after value",
+            "output": null,
+            "store": null,
+            "triggers_replace": null
+          },
+          "index_key": "0",
+          "sensitive_attributes": []
+        },
+        {
+          "attributes": {
+            "id": "golden-stable-id-1",
+            "input": "after value",
+            "output": null,
+            "store": null,
+            "triggers_replace": null
+          },
+          "index_key": "1",
+          "sensitive_attributes": []
+        },
+        {
+          "attributes": {
+            "id": "golden-stable-id-2",
+            "input": "after value",
+            "output": null,
+            "store": null,
+            "triggers_replace": null
+          },
+          "index_key": "2",
+          "sensitive_attributes": []
+        }
+      ],
+      "name": "changed",
+      "provider": "provider[\"terraform.io/builtin/terraform\"]",
+      "type": "terraform_data"
+    }
+  ]
+}

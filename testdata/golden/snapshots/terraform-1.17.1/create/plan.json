@@ -1,0 +1,367 @@
+{
+  "applyable": true,
+  "complete": true,
+  "configuration": {
+    "provider_config": {
+      "random": {
+        "full_name": "registry.terraform.io/hashicorp/random",
+        "name": "random",
+        "version_constraint": "3.7.2"
+      },
+      "terraform": {
+        "full_name": "terraform.io/builtin/terraform",
+        "name": "terraform"
+      },
+      "time": {
+        "full_name": "registry.terraform.io/hashicorp/time",
+        "name": "time",
+        "version_constraint": "0.13.1"
+      }
+    },
+    "root_module": {
+      "outputs": {
+        "fixture_id": {
+          "expression": {
+            "references": [
+              "terraform_data.fixture.id",
+              "terraform_data.fixture"
+            ]
+          }
+        }
+      },
+      "resources": [
+        {
+          "address": "random_password.defaulted",
+          "expressions": {
+            "keepers": {
+              "references": [
+                "terraform_data.fixture.id",
+                "terraform_data.fixture"
+              ]
+            },
+            "length": {
+              "constant_value": 24
+            },
+            "lower": {
+              "constant_value": false
+            }
+          },
+          "mode": "managed",
+          "name": "defaulted",
+          "provider_config_key": "random",
+          "schema_version": 3,
+          "type": "random_password"
+        },
+        {
+          "address": "terraform_data.dependent",
+          "expressions": {
+            "input": {
+              "references": [
+                "terraform_data.fixture.id",
+                "terraform_data.fixture"
+              ]
+            }
+          },
+          "mode": "managed",
+          "name": "dependent",
+          "provider_config_key": "terraform",
+          "schema_version": 0,
+          "type": "terraform_data"
+        },
+        {
+          "address": "terraform_data.fixture",
+          "expressions": {
+            "input": {
+              "constant_value": {
+                "explicit": "declared value",
+                "number": 7
+              }
+            }
+          },
+          "mode": "managed",
+          "name": "fixture",
+          "provider_config_key": "terraform",
+          "schema_version": 0,
+          "type": "terraform_data"
+        },
+        {
+          "address": "time_offset.fixed",
+          "expressions": {
+            "base_rfc3339": {
+              "constant_value": "2030-01-01T00:00:00Z"
+            },
+            "offset_days": {
+              "constant_value": 1
+            }
+          },
+          "mode": "managed",
+          "name": "fixed",
+          "provider_config_key": "time",
+          "schema_version": 0,
+          "type": "time_offset"
+        }
+      ]
+    }
+  },
+  "errored": false,
+  "format_version": "1.2",
+  "output_changes": {
+    "fixture_id": {
+      "actions": [
+        "create"
+      ],
+      "after_sensitive": false,
+      "after_unknown": true,
+      "before": null,
+      "before_sensitive": false
+    }
+  },
+  "planned_values": {
+    "outputs": {
+      "fixture_id": {
+        "sensitive": false
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "random_password.defaulted",
+          "mode": "managed",
+          "name": "defaulted",
+          "provider_name": "registry.terraform.io/hashicorp/random",
+          "schema_version": 3,
+          "sensitive_values": {
+            "bcrypt_hash": true,
+            "keepers": {},
+            "result": true
+          },
+          "type": "random_password",
+          "values": {
+            "keepers": {},
+            "length": 24,
+            "lower": false,
+            "min_lower": 0,
+            "min_numeric": 0,
+            "min_special": 0,
+            "min_upper": 0,
+            "number": true,
+            "numeric": true,
+            "override_special": null,
+            "special": true,
+            "upper": true
+          }
+        },
+        {
+          "address": "terraform_data.dependent",
+          "mode": "managed",
+          "name": "dependent",
+          "provider_name": "terraform.io/builtin/terraform",
+          "schema_version": 0,
+          "sensitive_values": {
+            "input": {},
+            "output": {}
+          },
+          "type": "terraform_data",
+          "values": {
+            "input": {
+              "explicit": "dependent value"
+            },
+            "store": null,
+            "triggers_replace": null
+          }
+        },
+        {
+          "address": "terraform_data.fixture",
+          "mode": "managed",
+          "name": "fixture",
+          "provider_name": "terraform.io/builtin/terraform",
+          "schema_version": 0,
+          "sensitive_values": {
+            "input": {},
+            "output": {}
+          },
+          "type": "terraform_data",
+          "values": {
+            "input": {
+              "explicit": "declared value",
+              "number": 7
+            },
+            "store": null,
+            "triggers_replace": null
+          }
+        },
+        {
+          "address": "time_offset.fixed",
+          "mode": "managed",
+          "name": "fixed",
+          "provider_name": "registry.terraform.io/hashicorp/time",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "time_offset",
+          "values": {
+            "base_rfc3339": "2030-01-01T00:00:00Z",
+            "offset_days": 1,
+            "offset_hours": null,
+            "offset_minutes": null,
+            "offset_months": null,
+            "offset_seconds": null,
+            "offset_years": null,
+            "triggers": null
+          }
+        }
+      ]
+    }
+  },
+  "relevant_attributes": [
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "terraform_data.fixture"
+    }
+  ],
+  "resource_changes": [
+    {
+      "address": "random_password.defaulted",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "keepers": {},
+          "length": 24,
+          "lower": false,
+          "min_lower": 0,
+          "min_numeric": 0,
+          "min_special": 0,
+          "min_upper": 0,
+          "number": true,
+          "numeric": true,
+          "override_special": null,
+          "special": true,
+          "upper": true
+        },
+        "after_sensitive": {
+          "bcrypt_hash": true,
+          "keepers": {},
+          "result": true
+        },
+        "after_unknown": {
+          "bcrypt_hash": true,
+          "id": true,
+          "keepers": {
+            "upstream_id": true
+          },
+          "result": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "defaulted",
+      "provider_name": "registry.terraform.io/hashicorp/random",
+      "type": "random_password"
+    },
+    {
+      "address": "terraform_data.dependent",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "input": {
+            "explicit": "dependent value"
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "after_sensitive": {
+          "input": {},
+          "output": {}
+        },
+        "after_unknown": {
+          "id": true,
+          "input": {
+            "upstream_id": true
+          },
+          "output": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "dependent",
+      "provider_name": "terraform.io/builtin/terraform",
+      "type": "terraform_data"
+    },
+    {
+      "address": "terraform_data.fixture",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "input": {
+            "explicit": "declared value",
+            "number": 7
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "after_sensitive": {
+          "input": {},
+          "output": {}
+        },
+        "after_unknown": {
+          "id": true,
+          "input": {},
+          "output": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "fixture",
+      "provider_name": "terraform.io/builtin/terraform",
+      "type": "terraform_data"
+    },
+    {
+      "address": "time_offset.fixed",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "base_rfc3339": "2030-01-01T00:00:00Z",
+          "offset_days": 1,
+          "offset_hours": null,
+          "offset_minutes": null,
+          "offset_months": null,
+          "offset_seconds": null,
+          "offset_years": null,
+          "triggers": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "day": true,
+          "hour": true,
+          "id": true,
+          "minute": true,
+          "month": true,
+          "rfc3339": true,
+          "second": true,
+          "unix": true,
+          "year": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "fixed",
+      "provider_name": "registry.terraform.io/hashicorp/time",
+      "type": "time_offset"
+    }
+  ],
+  "terraform_version": "1.17.1",
+  "timestamp": null
+}

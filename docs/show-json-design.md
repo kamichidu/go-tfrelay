@@ -1,0 +1,41 @@
+# Design note: Source from `terraform show -json`
+
+This note compares the current implementation with Terraform's plan JSON contract. It is analysis only: the current IR, Source, Transform, and Sink implementations remain unchanged.
+
+## Current contract
+
+`cmd/tfrelay-source-planfile/main.go` opens Terraform's binary planfile, gets the plan and prior state, applies each resource change to that state, and emits `tfrelay.RelayData`. `types.go` defines the IR as `resources[]`, each with `__id__`, `type`, `name`, `provider`, and `instances[]`; an instance has optional `index_key`, an `attributes` map of raw JSON values, and `sensitive_attributes`.
+
+`cmd/tfrelay-source-planfile/tfstate.go` applies only `CREATE`, `UPDATE`, and `DELETE`. Create/update decode the change's MessagePack `Values` into cty values, use the new side (index `1` for update), and omit any attribute that is not wholly known. Delete removes prior attributes. NOOP and other actions are ignored. This means the output is a merged state-like view, not a change list: action, before/after, unknown paths, and resource addresses are not represented. The source generates a random `__id__`; for new resources it currently fills `provider` with the placeholder `tfrelay-source-planfile`.
+
+The group-by Transform groups by `resource.type`, renames a merged resource using `name/name`, concatenates instances, and retains the last encountered resource's provider and ID. The text Sink renders only the current IR fields and exposes raw attribute JSON. Neither downstream stage receives plan actions, prior values, unknown markers, or configuration provenance.
+
+## `show -json` mapping and gaps
+
+| Plan JSON path | JSON shape and meaning | Current IR representation | Migration consequence |
+| --- | --- | --- | --- |
+| `format_version`, `terraform_version`, `planned_values`, `prior_state`, `configuration`, `resource_changes` | Top-level object fields | No top-level metadata | A direct decoder must select a projection; keeping these requires new IR fields or a parallel plan envelope. |
+| `resource_changes[].address` | String such as `module.app.terraform_data.item[0]` | `type`, `name`, and optional `index_key` only | Module path and full canonical address are lost; `name` currently comes from parsed address's local name. |
+| `resource_changes[].mode`, `.type`, `.name`, `.provider_name` | Strings identifying address mode, type/name, provider source address | `type`, `name`, `provider` | `provider_name` could replace today's placeholder, but existing provider field may contain a provider config address in prior state and needs normalization rules. Mode has no IR slot. |
+| `resource_changes[].index` | String or number for `count`/`for_each`, absent for singleton | `instances[].index_key` as a string containing JSON scalar text | Numeric `0` currently becomes `"0"` including serialized JSON. A JSON adapter should preserve scalar type until the legacy contract explicitly encodes it. |
+| `resource_changes[].change.actions` | Array of strings: `no-op`, `create`, `read`, `update`, `delete`; replacement is ordered pairs such as `delete`,`create` or `create`,`delete` | Not represented | Delete/create replacement and read become ambiguous if reduced to final state. A change-aware IR field would be required for downstream actions. |
+| `resource_changes[].change.before`, `.after` | Typed JSON values or `null`; before is often null on create and after null on delete | Only selected known final attributes are retained; delete removes attributes | Preserve both sides in an additive change envelope or define a projection that intentionally remains state-only. Null must remain distinct from omitted/unknown. |
+| `resource_changes[].change.after_unknown` | Object tree whose leaves are booleans, e.g. `{"id":true,"nested":{"computed":true}}` | Omitted: current Source skips cty values not wholly known | Flattening `after` without this map makes unknown indistinguishable from absent; a new IR field is necessary to preserve it. |
+| `resource_changes[].change.before_sensitive`, `.after_sensitive` | Boolean/object masks parallel to before/after values | `sensitive_attributes` is a raw JSON path structure copied from state; current plan Source does not populate it from the plan mask | The current name/shape is not equivalent to Terraform's per-side masks. A migration needs explicit before/after masks or a documented conversion that does not reveal values. |
+| `planned_values.root_module.resources[]` and nested `child_modules[].resources[]` | Planned resource objects with `address`, `mode`, `type`, `name`, `provider_name`, and `values` | Current Source effectively emits values for changed create/update resources only, after applying changes to prior state | A simple walk includes unchanged resources too, so it changes semantics unless filtering against `resource_changes` is preserved. |
+| `configuration.root_module.resources[].expressions` | Config expression objects with `constant_value` and/or `references` | No configuration field | May help identify expressions/references but does not reliably prove whether a final value came from explicit config, provider schema default, API default, or computed behavior. |
+| `proposed_unknown` | Object-shaped unknown mask for planned values | No equivalent | Can preserve unknowns for the complete proposed value tree; still needs mapping by address and careful handling of nested modules. |
+
+`terraform providers schema -json` complements this with `provider_schemas[provider source].resource_schemas[resource type].block.attributes[name]`, including `type`, `required`, `optional`, `computed`, `sensitive`, `description`, and `deprecated`. An attribute marked `optional` and `computed` can be omitted in configuration while receiving a provider-computed/default result. Schema metadata describes capability, not the origin of a particular returned value. The plan JSON `configuration` can show configured expressions, and a known configured `constant_value` can support an explicit-value inference, but references and dynamic expressions do not expose evaluated provenance. Provider defaults versus remote API defaults generally cannot be distinguished from plan JSON plus schema alone.
+
+## Unknown, null, and sensitive values
+
+For a planned attribute, `after` may contain a value, `null`, or a placeholder position accompanied by `after_unknown`. Treating JSON `null` as unknown would be incorrect: known null and unknown have separate meaning. Preserve the `after_unknown` mask alongside the value tree. Likewise, preserve `before_sensitive` and `after_sensitive` masks separately from values; do not infer that an omitted attribute is safe or unknown. Current `map[string]json.RawMessage` supports JSON null values but has no structured slot for unknown masks, action, or both sensitive masks.
+
+## Transform and Sink impact
+
+The existing Transform and Sink accept `RelayData`; adding top-level plan fields without changing their decoders would discard those fields on a decode/encode pipeline. If a parallel plan envelope is introduced, Transform plugins need an explicit policy for resource-address matching and whether change metadata follows merged/grouped resources. Group-by currently merges instances across addresses, so per-address actions and before/after values cannot be attached safely to the merged resource without changing its contract. Sinks need opt-in rendering for action, prior/proposed values, unknown masks, and sensitivity masks; existing templates should continue to see the current `RelayData` projection.
+
+## Compatibility path
+
+Keep the current binary-plan Source and `RelayData` output stable initially. Implement any future JSON reader as an adapter with fixture parity against the binary Source for the existing projection, and add a versioned or additive plan-aware envelope for fields that cannot fit the current IR. Preserve null, unknown, and sensitive masks structurally. Do not guess provenance or synthesize actions from value differences. Transform and Sink support should be opt-in until their behavior for address-keyed change data is specified. The Golden Set provides the parity and regression baseline for that later work.

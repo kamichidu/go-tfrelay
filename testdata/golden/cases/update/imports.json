@@ -1,0 +1,14 @@
+[
+  {
+    "address": "terraform_data.changed[0]",
+    "id": "golden-stable-id-0"
+  },
+  {
+    "address": "terraform_data.changed[1]",
+    "id": "golden-stable-id-1"
+  },
+  {
+    "address": "terraform_data.changed[2]",
+    "id": "golden-stable-id-2"
+  }
+]
