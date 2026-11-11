@@ -2,6 +2,7 @@ package addrs
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -90,7 +91,7 @@ func Parse(s string) Addrs {
 func (p *addrsParser) pushModule() {
 	suffix := p.v.IndexKey
 	if suffix != "" {
-		suffix = `[` + suffix + `]`
+		suffix = `[` + strconv.Quote(suffix) + `]`
 	}
 	p.Out = append(p.Out, Addr{
 		Module: "module." + p.v.Name + suffix,
@@ -112,5 +113,12 @@ func (p *addrsParser) setResourceName(s string) {
 }
 
 func (p *addrsParser) setIndexKey(s string) {
+	if len(s) > 0 && s[0] == '"' {
+		var err error
+		s, err = strconv.Unquote(s)
+		if err != nil {
+			panic(err)
+		}
+	}
 	p.v.IndexKey = s
 }
