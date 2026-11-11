@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/kamichidu/go-tfrelay/internal/addrs"
 	"github.com/kamichidu/go-tfrelay/internal/planproto"
+	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 	ctymsgpack "github.com/zclconf/go-cty/cty/msgpack"
@@ -272,6 +274,26 @@ func (s *tfState) putResource(addr addrs.Addrs, r tfResource) {
 }
 
 func mustDecodeMsgpack(b []byte) cty.Value {
+	if len(b) > 0 {
+		dec := msgpack.NewDecoder(bytes.NewReader(b))
+		length, err := dec.DecodeMapLen()
+		if err == nil && length >= 0 {
+			values := make(map[string]cty.Value, length)
+			for range length {
+				key, err := dec.DecodeString()
+				if err != nil {
+					panic(err)
+				}
+				raw, err := dec.DecodeRaw()
+				if err != nil {
+					panic(err)
+				}
+				values[key] = decodeDynamicMsgpack(raw)
+			}
+			return cty.ObjectVal(values)
+		}
+	}
+
 	typ, err := ctymsgpack.ImpliedType(b)
 	if err != nil {
 		typ = cty.DynamicPseudoType
@@ -281,6 +303,52 @@ func mustDecodeMsgpack(b []byte) cty.Value {
 		panic(err)
 	}
 	return val
+}
+
+func decodeDynamicMsgpack(b []byte) cty.Value {
+	if len(b) > 0 && b[0] == 0x92 {
+		if value, err := decodeTypedMsgpack(b); err == nil {
+			return value
+		}
+	}
+
+	typ, err := ctymsgpack.ImpliedType(b)
+	if err != nil {
+		typ = cty.DynamicPseudoType
+	}
+	val, err := ctymsgpack.Unmarshal(b, typ)
+	if err != nil {
+		panic(err)
+	}
+	return val
+}
+
+func decodeTypedMsgpack(b []byte) (cty.Value, error) {
+	dec := msgpack.NewDecoder(bytes.NewReader(b))
+	length, err := dec.DecodeArrayLen()
+	if err != nil {
+		return cty.NilVal, fmt.Errorf("invalid typed msgpack array: %w", err)
+	}
+	if length != 2 {
+		return cty.NilVal, fmt.Errorf("typed msgpack must be a two-element array: length %d", length)
+	}
+	typeJSON, err := dec.DecodeBytes()
+	if err != nil {
+		return cty.NilVal, fmt.Errorf("invalid typed msgpack type: %w", err)
+	}
+	var ty cty.Type
+	if err := json.Unmarshal(typeJSON, &ty); err != nil {
+		return cty.NilVal, fmt.Errorf("invalid typed msgpack type JSON: %w", err)
+	}
+	valueBytes, err := dec.DecodeRaw()
+	if err != nil {
+		return cty.NilVal, fmt.Errorf("invalid typed msgpack value: %w", err)
+	}
+	value, err := ctymsgpack.Unmarshal(valueBytes, ty)
+	if err != nil {
+		return cty.NilVal, err
+	}
+	return value, nil
 }
 
 func toHexString(b []byte) string {

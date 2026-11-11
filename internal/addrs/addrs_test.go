@@ -25,6 +25,12 @@ func TestParser(t *testing.T) {
 			},
 		},
 		{
+			`aaa.bbb[0]`,
+			addrs.Addrs{
+				addrs.Addr{Type: "aaa", Name: "bbb", IndexKey: "0"},
+			},
+		},
+		{
 			`aaa.bbb.ccc.ddd`,
 			addrs.Addrs{
 				addrs.Addr{Type: "aaa", Name: "bbb"},
