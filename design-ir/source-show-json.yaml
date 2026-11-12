@@ -658,6 +658,7 @@ extensions:
           - resource.sensitive_values
           - resource_changes[].change.after_sensitive
         mask_merge: recursively apply masks; explicitly true after_unknown paths missing from values materialize unknowns; absent in both remains absent
+        missing_sparse_array: reject when a missing array value has false mask positions because the ordered Value array cannot represent those omissions without changing indices
         proposed_unknown: not consumed for values, membership, masks, or validation
       resource_identity:
         instance_address_source: resource.address from the authoritative state or plan resource object
