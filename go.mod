@@ -6,6 +6,7 @@ require (
 	comail.io/go/colog v0.0.0-20160416085026-fba8e7b1f46c
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-multierror v1.1.1
+	github.com/kamichidu/go-flagshim v0.0.0-20260706215804-c7cec50d3e31
 	github.com/kamichidu/gobst v0.0.5
 	github.com/stretchr/testify v1.12.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1

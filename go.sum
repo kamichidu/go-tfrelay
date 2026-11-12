@@ -15,6 +15,8 @@ github.com/hashicorp/errwrap v1.1.0 h1:OxrOeh75EUXMY8TBjag2fzXGZ40LB6IKw45YeGUDY
 github.com/hashicorp/errwrap v1.1.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
 github.com/hashicorp/go-multierror v1.1.1 h1:H5DkEtf6CXdFp0N0Em5UCwQpXMWke8IA0+lD48awMYo=
 github.com/hashicorp/go-multierror v1.1.1/go.mod h1:iw975J/qwKPdAO1clOe2L8331t/9/fmwbPZ6JB6eMoM=
+github.com/kamichidu/go-flagshim v0.0.0-20260706215804-c7cec50d3e31 h1:zWowMaUNTbaUbeWaa8FjVhO7RM+LTZnm4PKRPj1+Uhg=
+github.com/kamichidu/go-flagshim v0.0.0-20260706215804-c7cec50d3e31/go.mod h1:oq07MYY4Z6VM3/KZD/jZuX+oXNL0xyyLng9ZA1GBq2U=
 github.com/kamichidu/gobst v0.0.5 h1:8uaplMcc9kyEyCXY/TgjZASTiCVyBH7xZH46WyHzklw=
 github.com/kamichidu/gobst v0.0.5/go.mod h1:nR2Y0XXDbmxV/7lJGmrvHr/CK82DfoKyh+EGt7LWUlM=
 github.com/kr/pretty v0.1.0 h1:L/CwN0zerZDmRFUapSPitk6f+Q3+0za1rQkzVuMiMFI=
