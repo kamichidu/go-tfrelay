@@ -1,83 +1,266 @@
 {
+  "ir_version": 1,
   "resources": [
     {
       "__id__": "<generated>",
       "instances": [
         {
+          "address": "random_password.defaulted",
           "attributes": {
-            "length": 24,
-            "lower": false,
-            "min_lower": 0,
-            "min_numeric": 0,
-            "min_special": 0,
-            "min_upper": 0,
-            "number": true,
-            "numeric": true,
-            "override_special": null,
-            "special": true,
-            "upper": true
+            "bcrypt_hash": {
+              "sensitive": true,
+              "state": "unknown"
+            },
+            "id": {
+              "state": "unknown"
+            },
+            "keepers": {
+              "state": "known",
+              "type": "object",
+              "value": {
+                "upstream_id": {
+                  "state": "unknown"
+                }
+              }
+            },
+            "length": {
+              "state": "known",
+              "type": "number",
+              "value": 24
+            },
+            "lower": {
+              "state": "known",
+              "type": "boolean",
+              "value": false
+            },
+            "min_lower": {
+              "state": "known",
+              "type": "number",
+              "value": 0
+            },
+            "min_numeric": {
+              "state": "known",
+              "type": "number",
+              "value": 0
+            },
+            "min_special": {
+              "state": "known",
+              "type": "number",
+              "value": 0
+            },
+            "min_upper": {
+              "state": "known",
+              "type": "number",
+              "value": 0
+            },
+            "number": {
+              "state": "known",
+              "type": "boolean",
+              "value": true
+            },
+            "numeric": {
+              "state": "known",
+              "type": "boolean",
+              "value": true
+            },
+            "override_special": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "result": {
+              "sensitive": true,
+              "state": "unknown"
+            },
+            "special": {
+              "state": "known",
+              "type": "boolean",
+              "value": true
+            },
+            "upper": {
+              "state": "known",
+              "type": "boolean",
+              "value": true
+            }
           },
           "sensitive_attributes": null
         }
       ],
       "name": "defaulted",
-      "provider": "tfrelay-source-planfile",
+      "provider": "registry.terraform.io/hashicorp/random",
       "type": "random_password"
     },
     {
       "__id__": "<generated>",
       "instances": [
         {
+          "address": "terraform_data.dependent",
           "attributes": {
-            "store": null,
-            "triggers_replace": null
+            "id": {
+              "state": "unknown"
+            },
+            "input": {
+              "state": "known",
+              "type": "object",
+              "value": {
+                "explicit": {
+                  "state": "known",
+                  "type": "string",
+                  "value": "dependent value"
+                },
+                "upstream_id": {
+                  "state": "unknown"
+                }
+              }
+            },
+            "output": {
+              "state": "unknown"
+            },
+            "store": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "triggers_replace": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            }
           },
           "sensitive_attributes": null
         }
       ],
       "name": "dependent",
-      "provider": "tfrelay-source-planfile",
+      "provider": "terraform.io/builtin/terraform",
       "type": "terraform_data"
     },
     {
       "__id__": "<generated>",
       "instances": [
         {
+          "address": "terraform_data.fixture",
           "attributes": {
-            "input": {
-              "explicit": "declared value",
-              "number": 7
+            "id": {
+              "state": "unknown"
             },
-            "store": null,
-            "triggers_replace": null
+            "input": {
+              "state": "known",
+              "type": "object",
+              "value": {
+                "explicit": {
+                  "state": "known",
+                  "type": "string",
+                  "value": "declared value"
+                },
+                "number": {
+                  "state": "known",
+                  "type": "number",
+                  "value": 7
+                }
+              }
+            },
+            "output": {
+              "state": "unknown"
+            },
+            "store": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "triggers_replace": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            }
           },
           "sensitive_attributes": null
         }
       ],
       "name": "fixture",
-      "provider": "tfrelay-source-planfile",
+      "provider": "terraform.io/builtin/terraform",
       "type": "terraform_data"
     },
     {
       "__id__": "<generated>",
       "instances": [
         {
+          "address": "time_offset.fixed",
           "attributes": {
-            "base_rfc3339": "2030-01-01T00:00:00Z",
-            "offset_days": 1,
-            "offset_hours": null,
-            "offset_minutes": null,
-            "offset_months": null,
-            "offset_seconds": null,
-            "offset_years": null,
-            "triggers": null
+            "base_rfc3339": {
+              "state": "known",
+              "type": "string",
+              "value": "2030-01-01T00:00:00Z"
+            },
+            "day": {
+              "state": "unknown"
+            },
+            "hour": {
+              "state": "unknown"
+            },
+            "id": {
+              "state": "unknown"
+            },
+            "minute": {
+              "state": "unknown"
+            },
+            "month": {
+              "state": "unknown"
+            },
+            "offset_days": {
+              "state": "known",
+              "type": "number",
+              "value": 1
+            },
+            "offset_hours": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "offset_minutes": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "offset_months": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "offset_seconds": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "offset_years": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "rfc3339": {
+              "state": "unknown"
+            },
+            "second": {
+              "state": "unknown"
+            },
+            "triggers": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "unix": {
+              "state": "unknown"
+            },
+            "year": {
+              "state": "unknown"
+            }
           },
           "sensitive_attributes": null
         }
       ],
       "name": "fixed",
-      "provider": "tfrelay-source-planfile",
+      "provider": "registry.terraform.io/hashicorp/time",
       "type": "time_offset"
     }
-  ]
+  ],
+  "snapshot_kind": "planned"
 }

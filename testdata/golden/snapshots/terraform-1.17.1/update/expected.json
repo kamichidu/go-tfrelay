@@ -1,45 +1,104 @@
 {
+  "ir_version": 1,
   "resources": [
     {
       "__id__": "<generated>",
       "instances": [
         {
+          "address": "terraform_data.changed[0]",
           "attributes": {
-            "id": "golden-stable-id-0",
-            "input": "after value",
-            "output": null,
-            "store": null,
-            "triggers_replace": null
+            "id": {
+              "state": "known",
+              "type": "string",
+              "value": "golden-stable-id-0"
+            },
+            "input": {
+              "state": "known",
+              "type": "string",
+              "value": "after value"
+            },
+            "output": {
+              "state": "unknown"
+            },
+            "store": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "triggers_replace": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            }
           },
           "index_key": "0",
-          "sensitive_attributes": []
+          "sensitive_attributes": null
         },
         {
+          "address": "terraform_data.changed[1]",
           "attributes": {
-            "id": "golden-stable-id-1",
-            "input": "after value",
-            "output": null,
-            "store": null,
-            "triggers_replace": null
+            "id": {
+              "state": "known",
+              "type": "string",
+              "value": "golden-stable-id-1"
+            },
+            "input": {
+              "state": "known",
+              "type": "string",
+              "value": "after value"
+            },
+            "output": {
+              "state": "unknown"
+            },
+            "store": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "triggers_replace": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            }
           },
           "index_key": "1",
-          "sensitive_attributes": []
+          "sensitive_attributes": null
         },
         {
+          "address": "terraform_data.changed[2]",
           "attributes": {
-            "id": "golden-stable-id-2",
-            "input": "after value",
-            "output": null,
-            "store": null,
-            "triggers_replace": null
+            "id": {
+              "state": "known",
+              "type": "string",
+              "value": "golden-stable-id-2"
+            },
+            "input": {
+              "state": "known",
+              "type": "string",
+              "value": "after value"
+            },
+            "output": {
+              "state": "unknown"
+            },
+            "store": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "triggers_replace": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            }
           },
           "index_key": "2",
-          "sensitive_attributes": []
+          "sensitive_attributes": null
         }
       ],
       "name": "changed",
-      "provider": "provider[\"terraform.io/builtin/terraform\"]",
+      "provider": "terraform.io/builtin/terraform",
       "type": "terraform_data"
     }
-  ]
+  ],
+  "snapshot_kind": "planned"
 }

@@ -54,8 +54,12 @@ func extractColumns(v tfrelay.Instance, keys_ any) ([]string, error) {
 
 	out := make([]string, 0, len(keys))
 	for _, k := range keys {
-		v := v.Attributes[k]
-		out = append(out, string(v))
+		value := v.Attributes[k]
+		if value.State == "unknown" {
+			out = append(out, "<unknown>")
+			continue
+		}
+		out = append(out, string(value.Value))
 	}
 	return out, nil
 }
@@ -105,12 +109,27 @@ func (c *command) Run(ctx context.Context, _ []string) error {
 	if err != nil {
 		return err
 	}
-	defer wc.Close()
+	defer func() { _ = wc.Close() }()
 
 	var data tfrelay.RelayData
 	jd := json.NewDecoder(flagshim.MustStdinFromContext(ctx))
 	if err := jd.Decode(&data); err != nil {
 		return fmt.Errorf("decode input: %w", err)
+	}
+	if data.IRVersion != 1 || (data.SnapshotKind != "planned" && data.SnapshotKind != "state") {
+		return fmt.Errorf("unsupported RelayData contract: ir_version=%d snapshot_kind=%q", data.IRVersion, data.SnapshotKind)
+	}
+	for resourceIndex := range data.Resources {
+		for instanceIndex := range data.Resources[resourceIndex].Instances {
+			instance := &data.Resources[resourceIndex].Instances[instanceIndex]
+			for name, value := range instance.Attributes {
+				redacted, err := redactValue(value)
+				if err != nil {
+					return fmt.Errorf("redact %s.%s: %w", instance.Address, name, err)
+				}
+				instance.Attributes[name] = redacted
+			}
+		}
 	}
 
 	tpl := template.New("tfrelay-sink-text")
@@ -136,6 +155,54 @@ func (c *command) Run(ctx context.Context, _ []string) error {
 		return fmt.Errorf("execute template: %w", err)
 	}
 	return nil
+}
+
+func redactValue(value tfrelay.Value) (tfrelay.Value, error) {
+	if value.Sensitive {
+		value.State, value.Type = "known", "string"
+		value.Value, _ = json.Marshal("<sensitive>")
+		return value, nil
+	}
+	if value.State != "known" {
+		return value, nil
+	}
+	switch value.Type {
+	case "object":
+		var children map[string]tfrelay.Value
+		if err := json.Unmarshal(value.Value, &children); err != nil {
+			return value, err
+		}
+		for key, child := range children {
+			redacted, err := redactValue(child)
+			if err != nil {
+				return value, err
+			}
+			children[key] = redacted
+		}
+		encoded, err := json.Marshal(children)
+		if err != nil {
+			return value, err
+		}
+		value.Value = encoded
+	case "array":
+		var children []tfrelay.Value
+		if err := json.Unmarshal(value.Value, &children); err != nil {
+			return value, err
+		}
+		for index, child := range children {
+			redacted, err := redactValue(child)
+			if err != nil {
+				return value, err
+			}
+			children[index] = redacted
+		}
+		encoded, err := json.Marshal(children)
+		if err != nil {
+			return value, err
+		}
+		value.Value = encoded
+	}
+	return value, nil
 }
 
 func main() {

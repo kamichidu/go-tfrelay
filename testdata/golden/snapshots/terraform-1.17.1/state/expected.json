@@ -1,0 +1,36 @@
+{
+  "ir_version": 1,
+  "resources": [
+    {
+      "__id__": "<generated>",
+      "instances": [
+        {
+          "address": "aws_test.main",
+          "attributes": {
+            "nullable": {
+              "state": "known",
+              "type": "null",
+              "value": null
+            },
+            "number": {
+              "state": "known",
+              "type": "number",
+              "value": 12345678901234567890
+            },
+            "secret": {
+              "sensitive": true,
+              "state": "known",
+              "type": "string",
+              "value": "state-secret"
+            }
+          },
+          "sensitive_attributes": null
+        }
+      ],
+      "name": "main",
+      "provider": "registry.example/test",
+      "type": "aws_test"
+    }
+  ],
+  "snapshot_kind": "state"
+}

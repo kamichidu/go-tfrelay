@@ -22,16 +22,20 @@ func (c *command) Run(ctx context.Context, _ []string) error {
 	if err := json.NewDecoder(flagshim.MustStdinFromContext(ctx)).Decode(&data); err != nil {
 		return fmt.Errorf("decode input: %w", err)
 	}
+	if data.IRVersion != 1 || (data.SnapshotKind != "planned" && data.SnapshotKind != "state") {
+		return fmt.Errorf("unsupported RelayData contract: ir_version=%d snapshot_kind=%q", data.IRVersion, data.SnapshotKind)
+	}
 
 	// group by resource.type
 	memo := map[string]tfrelay.Resource{}
 	for _, v := range data.Resources {
-		dup, ok := memo[v.Type]
+		key := v.Type + "\x00" + v.Provider
+		dup, ok := memo[key]
 		if ok {
 			v.Name = v.Name + "/" + dup.Name
 			v.Instances = append(v.Instances, dup.Instances...)
 		}
-		memo[v.Type] = v
+		memo[key] = v
 	}
 	data.Resources = make([]tfrelay.Resource, 0, len(memo))
 	for _, v := range memo {

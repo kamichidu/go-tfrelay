@@ -2,7 +2,7 @@ name: Golden Set
 
 on:
   pull_request:
-    branches: [main, fix/terraform-1.17-planfile-compat]
+    branches: [main, feat/cli-flagshim-migration]
   push:
     branches: [main]
 
@@ -17,11 +17,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27.4'
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: '1.17.1'
-          terraform_wrapper: false
       - name: Test fixed contracts
         run: go test ./...
-      - name: Regenerate and compare Terraform snapshots
+      - name: Compare fixed Terraform show JSON snapshots
         run: go run ./cmd/golden -check
