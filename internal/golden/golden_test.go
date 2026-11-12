@@ -50,6 +50,101 @@ func TestCanonicalRelayNormalizesGeneratedIDOnly(t *testing.T) {
 	}
 }
 
+func TestCanonicalJSONRejectsTrailingData(t *testing.T) {
+	for _, input := range []string{`{} {}`, `{} trailing`} {
+		t.Run(input, func(t *testing.T) {
+			if _, err := CanonicalPlan([]byte(input)); err == nil {
+				t.Fatalf("CanonicalPlan accepted trailing data %q", input)
+			}
+		})
+	}
+}
+
+func TestSourceSemanticOracle(t *testing.T) {
+	root := repoRoot(t)
+	read := func(testCase, name string) map[string]any {
+		t.Helper()
+		data := readFile(t, filepath.Join(root, "testdata", "golden", "snapshots", "terraform-1.17.1", testCase, "expected.json"))
+		var snapshot struct {
+			Resources []struct {
+				Type      string `json:"type"`
+				Name      string `json:"name"`
+				Provider  string `json:"provider"`
+				Instances []struct {
+					Attributes          map[string]json.RawMessage `json:"attributes"`
+					SensitiveAttributes json.RawMessage            `json:"sensitive_attributes"`
+				} `json:"instances"`
+			} `json:"resources"`
+		}
+		if err := json.Unmarshal(data, &snapshot); err != nil {
+			t.Fatal(err)
+		}
+		for _, resource := range snapshot.Resources {
+			if resource.Name != name {
+				continue
+			}
+			var attributes map[string]json.RawMessage
+			var sensitiveAttributes json.RawMessage
+			if len(resource.Instances) > 0 {
+				attributes = resource.Instances[0].Attributes
+				sensitiveAttributes = resource.Instances[0].SensitiveAttributes
+			}
+			return map[string]any{
+				"type": resource.Type, "provider": resource.Provider,
+				"attributes":           attributes,
+				"sensitive_attributes": sensitiveAttributes,
+			}
+		}
+		t.Fatalf("resource %q missing from %s snapshot", name, testCase)
+		return nil
+	}
+
+	create := read("create", "defaulted")
+	if create["provider"] != "tfrelay-source-planfile" {
+		t.Errorf("v1 provider projection = %v", create["provider"])
+	}
+	attributes := create["attributes"].(map[string]json.RawMessage)
+	var upper bool
+	if err := json.Unmarshal(attributes["upper"], &upper); err != nil || !upper {
+		t.Errorf("provider default upper = %s, want true (err %v)", attributes["upper"], err)
+	}
+	if _, ok := attributes["result"]; ok {
+		t.Errorf("unknown result should be omitted by v1 Source: %s", attributes["result"])
+	}
+	if string(create["sensitive_attributes"].(json.RawMessage)) != "null" {
+		t.Errorf("v1 sensitive path projection = %s, want null", create["sensitive_attributes"])
+	}
+
+	dependent := read("create", "dependent")["attributes"].(map[string]json.RawMessage)
+	if _, ok := dependent["input"]; ok {
+		t.Errorf("partially unknown input should be omitted by v1 Source: %s", dependent["input"])
+	}
+
+	data := readFile(t, filepath.Join(root, "testdata", "golden", "snapshots", "terraform-1.17.1", "update", "expected.json"))
+	var updateSnapshot struct {
+		Resources []struct {
+			Instances []struct {
+				Attributes map[string]json.RawMessage `json:"attributes"`
+			} `json:"instances"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal(data, &updateSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	updated := updateSnapshot.Resources[0].Instances[0].Attributes
+	var inputValue string
+	if err := json.Unmarshal(updated["input"], &inputValue); err != nil || inputValue != "after value" {
+		t.Errorf("update projected input = %q, want after value (err %v)", inputValue, err)
+	}
+	var id string
+	if err := json.Unmarshal(updated["id"], &id); err != nil || id != "golden-stable-id-0" {
+		t.Errorf("update should preserve known prior id, got %q (err %v)", id, err)
+	}
+	if _, ok := updated["output"]; !ok {
+		t.Error("update should retain prior output field when planned output is unknown")
+	}
+}
+
 func TestSourceSnapshots(t *testing.T) {
 	root := repoRoot(t)
 	requireTerraform(t)
