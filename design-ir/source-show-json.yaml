@@ -190,13 +190,14 @@ nodes:
     level: system_design
     kind: design_choice
     statement: >-
-      planned_values is the primary source of post-apply resource membership
-      and known values. The Source recursively walks root_module.resources and
-      child_modules. resource_changes is joined by exact instance address to
-      apply change.after_unknown and change.after_sensitive masks. A non-null
-      change.after may supply a resource omitted from planned_values; when both
-      sources provide conflicting known values, the Source MUST fail instead
-      of choosing silently.
+      planned_values is the sole source of post-apply resource membership,
+      addresses, and emitted known values. The Source recursively walks
+      root_module.resources and child_modules; resources absent there are never
+      restored from resource_changes or prior_state. resource_changes is joined
+      to planned instances by exact current instance address and contributes
+      only after_unknown and after_sensitive masks. change.after is not a value
+      fallback. This retains no-op instances present in planned_values and
+      excludes deleted instances absent from it.
     attributes:
       primary_values: planned_values.root_module
       recursive_module_path: child_modules
@@ -204,10 +205,12 @@ nodes:
         unknown: resource_changes[].change.after_unknown
         sensitive: resource_changes[].change.after_sensitive
       secondary_sensitive_mask: planned_values resource sensitive_values
-      fallback_values: resource_changes[].change.after when non-null and address is absent
-      conflict_policy: fail closed on conflicting known values
-      deleted_resource: omit when no post-apply value exists
+      values_fallback: forbidden; change.after never supplies snapshot values or membership
+      missing_mask: retain planned known/null value; do not infer unknown from mask absence
+      deleted_resource: omit when absent from planned_values
+      prior_state: unused
       output_changes: excluded from Resource snapshot
+      proposed_unknown: plan-wide potential-unknown representation; consistency aid only, never an unconditional value or membership override
     provenance:
       origin: derived
       artifact_refs:
@@ -217,21 +220,29 @@ nodes:
     level: system_design
     kind: design_choice
     statement: >-
-      Unknown and sensitive masks are applied recursively by path. An unknown
-      mask at a node makes that node unknown even if Terraform emitted a null
-      placeholder. A true sensitive mask marks that node sensitive. Effective
-      sensitivity is inherited: a sensitive parent makes all descendants
-      effectively sensitive, while a sensitive child does not mark siblings.
-      If after_unknown and a value disagree, unknown takes precedence; a
-      non-null conflict between planned_values and change.after is an input
-      error as specified by DEC-PLAN-MAPPING.
+      Unknown and sensitive masks are applied recursively by path to the
+      planned_values tree. Matching resource_changes.change.after_unknown and
+      change.after_sensitive and planned_values resource.sensitive_values
+      supplement information that planned_values.values omits or represents as
+      null. A true unknown mask marks its path unknown, including a known-null
+      placeholder; false or absent mask paths do not erase known planned values.
+      A true sensitive mask marks its path sensitive. Effective sensitivity is
+      inherited by descendants, while a sensitive child does not mark siblings.
+      Masks are partial metadata: structural differences, absent paths, and
+      known nulls do not by themselves make the plan invalid. Do not substitute
+      change.after or unconditionally apply proposed_unknown.
     attributes:
       mask_merge:
         unknown: true wins over a value or null placeholder
         sensitive: logical OR of planned_values.sensitive_values and after_sensitive
-        missing_mask_path: false unless another mask marks it true
+        missing_mask_path: no additional information; retain planned value as represented
+        differing_mask_shape: merge matching paths; ignore absent paths without rejecting the plan
+        known_null: remains known unless a true unknown mask marks that path
+        proposed_unknown: plan-wide potential-unknown representation; consistency aid only, not authoritative override
       effective_sensitive: parent_effective OR local_sensitive
       known_null: remains known unless unknown mask marks its path
+      partial_masks: merge matching paths; absent paths and differing shapes add no information and do not alone reject input
+      proposed_unknown_role: may be inspected as a consistency aid; does not replace planned_values or matching after_unknown
   - id: DEC-RESOURCE-ADDRESS
     level: system_design
     kind: design_choice
@@ -247,7 +258,7 @@ nodes:
     attributes:
       instance_address: exact absolute address from the Terraform resource value object
       instance_index_key: canonical JSON scalar token, omitted for singleton
-      index_source: resource.index from planned_values or resource_changes; omit when absent
+      index_source: resource.index from planned_values; omit when absent
       address_missing: fail instead of synthesizing an address
       address_qualifiers: [module path, module instance keys, data-source prefix, resource instance key]
       source_grouping_key: containing module-instance address plus mode, type, and local name
@@ -330,6 +341,7 @@ nodes:
       transform:
         input_output: same ir_version
         preserve: [known_unknown_state, known_null, recursive_structure, address, index_key, sensitivity]
+        provider_grouping: never combine differing Provider values into one resource-level provider field
         merge: retain per-instance values and address identity; do not collapse differing resource-level provider values
       sink:
         input: versioned RelayData
@@ -428,7 +440,7 @@ nodes:
       RelayData. A future diff model must be designed separately and must not
       change the meaning of this snapshot contract.
     attributes:
-      allowed_change_data: [after fallback, after_unknown, after_sensitive]
+      allowed_change_data: [after_unknown, after_sensitive]
       excluded_change_data: [actions, before, before_sensitive, replacement_order]
   - id: IMPL-GOLDEN-BASELINE
     level: implementation
@@ -642,29 +654,29 @@ extensions:
     terraform_input_mapping:
       plan_status:
         format_version: reject unsupported major version; accept additive minor versions and ignore unknown members
-        resource_changes: includes no-op resources; do not treat list membership as a change model
+        resource_changes: may include no-op resources; planned_values alone defines snapshot membership
         errored_true: reject with no partial output
-        complete_false: reject as incomplete/deferred
+        complete_false: explicitly reject as incomplete
         deferred_changes_nonempty: reject as unsupported/deferred
         applyable_false: do not reject for this condition alone
       resource_walk:
         primary: planned_values.root_module.resources
         nested: recursively walk child_modules.resources
-        unknown_values: fields may be omitted or null; use after_unknown to distinguish unknown from known null
+        unknown_values: fields may be omitted or null; matching after_unknown can identify unknown paths
         address: require the exact absolute resource address from the resource value object
         output_changes: exclude because RelayData models resources, not outputs
       attributes:
         primary_values: resource.values
-        fallback: matching resource_changes[].change.after only when non-null and no planned_values resource exists at the same instance address
-        conflict: fail if both sources supply conflicting known values
+        fallback: forbidden; change.after is never substituted for planned_values values
         unknown_mask: resource_changes[].change.after_unknown joined by exact instance address and recursively applied
         sensitive_masks:
           - resource.sensitive_values
           - resource_changes[].change.after_sensitive
-        mask_precedence: unknown true overrides a null or concrete placeholder; sensitivity masks combine with logical OR
+        mask_merge: recursively apply matching true paths; absent or differently shaped paths add no information and do not alone reject input
+        proposed_unknown: plan-wide indication of potentially unknown values; not a replacement for planned_values or per-change after_unknown and not an unconditional override
       resource_identity:
-        instance_address_source: resource.address from planned_values or resource_changes
-        index_source: resource.index; encode the original string or number as a canonical JSON scalar token
+        instance_address_source: resource.address from planned_values only
+        index_source: resource.index from planned_values; encode the original string or number as a canonical JSON scalar token
         moved_resource: use the new planned address; previous_address is not snapshot identity
         group_resources: same containing module-instance path plus mode, type, and local name
         split_instances: retain per-instance address and index_key
@@ -677,9 +689,9 @@ extensions:
         use: diagnostics only to show configured expressions
         do_not_use: [fill missing planned values, assign value origin, infer provider or API defaults]
       changes:
-        used: [after fallback, after_unknown, after_sensitive]
+        used: [after_unknown, after_sensitive]
         not_emitted: [actions, before, before_sensitive, replacement order]
-        deleted_instance: absent from post-apply snapshot when it has no after value
+        deleted_instance: exclude when absent from planned_values, regardless of change.after
     pipeline_contract:
       source:
         accepts: saved planfile path
@@ -709,15 +721,6 @@ extensions:
         missing_attribute: remain absent; do not infer unknown
         sensitive_attributes: map valid legacy mask paths to Value.sensitive; fail on unsupported mask structure
         limitation: lost unknown values and Terraform addresses cannot be restored
-      downgrade_v2_to_v1:
-        default: fail if unknown, nested states, instance addresses, or sensitivity cannot be represented
-        lossy_mode: explicit opt-in and report the loss
-      rollout:
-        - add dual-version decoder and version-preserving Transformer and Sink contracts
-        - verify all configured external plugins support version 2
-        - enable Source version 2 only after plugin compatibility is established
-      downgrade: explicit and lossy only; never implicit
-      legacy_templates: supported through explicit version-1 projection only
     acceptance:
       source_unit: fixed plan.json to version-2 expected.json without Terraform
       source_end_to_end: saved planfile path through terraform show -json to expected.json
