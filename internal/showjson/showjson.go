@@ -480,7 +480,7 @@ func materializeUnknownMask(unknown, sensitive jsonValue, inheritedSensitive boo
 			if !maskHasTrue(mask) {
 				return tfrelay.Value{}, errors.New("cannot materialize an after_unknown array path when the corresponding planned value is absent")
 			}
-			child, err := materializeUnknownMask(mask, sensitiveChild, inheritedSensitive)
+			child, err := materializeUnknownMask(mask, sensitiveChild, inheritedSensitive || maskTrue(sensitive))
 			if err != nil {
 				return tfrelay.Value{}, err
 			}
