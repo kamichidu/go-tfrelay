@@ -210,7 +210,7 @@ nodes:
       deleted_resource: omit when absent from planned_values
       prior_state: unused
       output_changes: excluded from Resource snapshot
-      proposed_unknown: plan-wide potential-unknown representation; consistency aid only, never an unconditional value or membership override
+      proposed_unknown: not consumed; it does not affect values, membership, masks, or validation
     provenance:
       origin: derived
       artifact_refs:
@@ -230,7 +230,7 @@ nodes:
       inherited by descendants, while a sensitive child does not mark siblings.
       Masks are partial metadata: structural differences, absent paths, and
       known nulls do not by themselves make the plan invalid. Do not substitute
-      change.after or unconditionally apply proposed_unknown.
+      change.after or consume proposed_unknown.
     attributes:
       mask_merge:
         unknown: true wins over a value or null placeholder
@@ -238,11 +238,11 @@ nodes:
         missing_mask_path: no additional information; retain planned value as represented
         differing_mask_shape: merge matching paths; ignore absent paths without rejecting the plan
         known_null: remains known unless a true unknown mask marks that path
-        proposed_unknown: plan-wide potential-unknown representation; consistency aid only, not authoritative override
+        proposed_unknown: not consumed; it does not affect values, membership, masks, or validation
       effective_sensitive: parent_effective OR local_sensitive
       known_null: remains known unless unknown mask marks its path
       partial_masks: merge matching paths; absent paths and differing shapes add no information and do not alone reject input
-      proposed_unknown_role: may be inspected as a consistency aid; does not replace planned_values or matching after_unknown
+      proposed_unknown_role: not consumed for values, membership, masks, or validation
   - id: DEC-RESOURCE-ADDRESS
     level: system_design
     kind: design_choice
@@ -673,7 +673,7 @@ extensions:
           - resource.sensitive_values
           - resource_changes[].change.after_sensitive
         mask_merge: recursively apply matching true paths; absent or differently shaped paths add no information and do not alone reject input
-        proposed_unknown: plan-wide indication of potentially unknown values; not a replacement for planned_values or per-change after_unknown and not an unconditional override
+        proposed_unknown: not consumed for values, membership, masks, or validation
       resource_identity:
         instance_address_source: resource.address from planned_values only
         index_source: resource.index from planned_values; encode the original string or number as a canonical JSON scalar token
