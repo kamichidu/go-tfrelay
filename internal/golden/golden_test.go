@@ -1,0 +1,292 @@
+package golden
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
+
+func TestCanonicalPlanPreservesSemanticFields(t *testing.T) {
+	input := []byte(`{"timestamp":"2026-01-01T00:00:00Z","planned_values":{"root_module":{"resources":[{"address":"b"},{"address":"a"}]}},"resource_changes":[{"address":"b","change":{"after_unknown":{"id":true},"after_sensitive":{"secret":true}}},{"address":"a"}]}`)
+	got, err := CanonicalPlan(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(got, &value); err != nil {
+		t.Fatal(err)
+	}
+	if value["timestamp"] != nil {
+		t.Fatalf("timestamp not normalized: %v", value["timestamp"])
+	}
+	encoded := string(got)
+	for _, preserved := range []string{"after_unknown", "after_sensitive", `"address": "a"`, `"address": "b"`} {
+		if !bytes.Contains(got, []byte(preserved)) {
+			t.Errorf("canonical JSON lost %q: %s", preserved, encoded)
+		}
+	}
+	if bytes.Index(got, []byte(`"address": "a"`)) > bytes.Index(got, []byte(`"address": "b"`)) {
+		t.Fatalf("resource arrays not sorted: %s", encoded)
+	}
+}
+
+func TestCanonicalRelayNormalizesGeneratedIDOnly(t *testing.T) {
+	input := []byte(`{"resources":[{"__id__":"random","type":"x","name":"a","instances":[{"index_key":"1","attributes":{"value":1},"sensitive_attributes":[{"type":"get_attr","value":"secret"}]}]}]}`)
+	got, err := CanonicalRelay(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, preserved := range []string{`"value": 1`, "sensitive_attributes", "secret"} {
+		if !bytes.Contains(got, []byte(preserved)) {
+			t.Errorf("canonical JSON lost %q: %s", preserved, got)
+		}
+	}
+	if !bytes.Contains(got, []byte(`<generated>`)) || bytes.Contains(got, []byte(`"__id__": "random"`)) {
+		t.Fatalf("generated ID not normalized: %s", got)
+	}
+}
+
+func TestCanonicalJSONRejectsTrailingData(t *testing.T) {
+	for _, input := range []string{`{} {}`, `{} trailing`} {
+		t.Run(input, func(t *testing.T) {
+			if _, err := CanonicalPlan([]byte(input)); err == nil {
+				t.Fatalf("CanonicalPlan accepted trailing data %q", input)
+			}
+		})
+	}
+}
+
+func TestSourceSemanticOracle(t *testing.T) {
+	root := repoRoot(t)
+	read := func(testCase, name string) map[string]any {
+		t.Helper()
+		data := readFile(t, filepath.Join(root, "testdata", "golden", "snapshots", "terraform-1.17.1", testCase, "expected.json"))
+		var snapshot struct {
+			Resources []struct {
+				Type      string `json:"type"`
+				Name      string `json:"name"`
+				Provider  string `json:"provider"`
+				Instances []struct {
+					Attributes          map[string]json.RawMessage `json:"attributes"`
+					SensitiveAttributes json.RawMessage            `json:"sensitive_attributes"`
+				} `json:"instances"`
+			} `json:"resources"`
+		}
+		if err := json.Unmarshal(data, &snapshot); err != nil {
+			t.Fatal(err)
+		}
+		for _, resource := range snapshot.Resources {
+			if resource.Name != name {
+				continue
+			}
+			var attributes map[string]json.RawMessage
+			var sensitiveAttributes json.RawMessage
+			if len(resource.Instances) > 0 {
+				attributes = resource.Instances[0].Attributes
+				sensitiveAttributes = resource.Instances[0].SensitiveAttributes
+			}
+			return map[string]any{
+				"type": resource.Type, "provider": resource.Provider,
+				"attributes":           attributes,
+				"sensitive_attributes": sensitiveAttributes,
+			}
+		}
+		t.Fatalf("resource %q missing from %s snapshot", name, testCase)
+		return nil
+	}
+
+	create := read("create", "defaulted")
+	if create["provider"] != "tfrelay-source-planfile" {
+		t.Errorf("v1 provider projection = %v", create["provider"])
+	}
+	attributes := create["attributes"].(map[string]json.RawMessage)
+	var upper bool
+	if err := json.Unmarshal(attributes["upper"], &upper); err != nil || !upper {
+		t.Errorf("provider default upper = %s, want true (err %v)", attributes["upper"], err)
+	}
+	if _, ok := attributes["result"]; ok {
+		t.Errorf("unknown result should be omitted by v1 Source: %s", attributes["result"])
+	}
+	if string(create["sensitive_attributes"].(json.RawMessage)) != "null" {
+		t.Errorf("v1 sensitive path projection = %s, want null", create["sensitive_attributes"])
+	}
+
+	dependent := read("create", "dependent")["attributes"].(map[string]json.RawMessage)
+	if _, ok := dependent["input"]; ok {
+		t.Errorf("partially unknown input should be omitted by v1 Source: %s", dependent["input"])
+	}
+
+	data := readFile(t, filepath.Join(root, "testdata", "golden", "snapshots", "terraform-1.17.1", "update", "expected.json"))
+	var updateSnapshot struct {
+		Resources []struct {
+			Instances []struct {
+				Attributes map[string]json.RawMessage `json:"attributes"`
+			} `json:"instances"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal(data, &updateSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	updated := updateSnapshot.Resources[0].Instances[0].Attributes
+	var inputValue string
+	if err := json.Unmarshal(updated["input"], &inputValue); err != nil || inputValue != "after value" {
+		t.Errorf("update projected input = %q, want after value (err %v)", inputValue, err)
+	}
+	var id string
+	if err := json.Unmarshal(updated["id"], &id); err != nil || id != "golden-stable-id-0" {
+		t.Errorf("update should preserve known prior id, got %q (err %v)", id, err)
+	}
+	if _, ok := updated["output"]; !ok {
+		t.Error("update should retain prior output field when planned output is unknown")
+	}
+}
+
+func TestSourceSnapshots(t *testing.T) {
+	root := repoRoot(t)
+	requireTerraform(t)
+	environments, err := os.ReadDir(filepath.Join(root, "testdata", "golden", "environments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, environment := range environments {
+		if !environment.IsDir() {
+			continue
+		}
+		t.Run(environment.Name(), func(t *testing.T) {
+			cases, err := os.ReadDir(filepath.Join(root, "testdata", "golden", "snapshots", environment.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, testCase := range cases {
+				if !testCase.IsDir() {
+					continue
+				}
+				t.Run(testCase.Name(), func(t *testing.T) {
+					planfile := filepath.Join(root, "testdata", "golden", "snapshots", environment.Name(), testCase.Name(), "plan.tfplan")
+					if _, err := os.Stat(planfile); err != nil {
+						t.Fatal(err)
+					}
+					cmd := exec.Command("go", "run", "./cmd/tfrelay-source-planfile", "--", planfile)
+					cmd.Dir = root
+					output, err := cmd.Output()
+					if err != nil {
+						if exit, ok := err.(*exec.ExitError); ok {
+							t.Fatalf("Source command: %v\n%s", err, exit.Stderr)
+						}
+						t.Fatal(err)
+					}
+					got, err := CanonicalRelay(output)
+					if err != nil {
+						t.Fatal(err)
+					}
+					want, err := os.ReadFile(filepath.Join(root, "testdata", "golden", "snapshots", environment.Name(), testCase.Name(), "expected.json"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					canonicalWant, err := CanonicalRelay(want)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(got, canonicalWant) {
+						t.Fatalf("Source output differs from expected.json; regenerate only after review: %s\n%s", planfile, got)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestTransformGolden(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, "testdata", "golden", "snapshots", "transforms", "groupby")
+	got := runGoCommand(t, root, "./cmd/tfrelay-transform-groupby", readFile(t, filepath.Join(dir, "input.json")))
+	canonical, err := CanonicalRelay(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := CanonicalRelay(readFile(t, filepath.Join(dir, "expected.json")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(canonical, want) {
+		t.Fatalf("Transform output differs from expected.json: %s", canonical)
+	}
+}
+
+func TestSinkGolden(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, "testdata", "golden", "snapshots", "sinks", "text")
+	cmd := exec.Command("go", "run", "./cmd/tfrelay-sink-text")
+	cmd.Dir = root
+	cmd.Stdin = bytes.NewReader(readFile(t, filepath.Join(dir, "input.json")))
+	cmd.Env = append(os.Environ(), "TFRELAY_SINK_TEXT_TEMPLATE="+string(readFile(t, filepath.Join(dir, "template.txt"))))
+	got, err := cmd.Output()
+	if err != nil {
+		if exit, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("Sink command: %v\n%s", err, exit.Stderr)
+		}
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, readFile(t, filepath.Join(dir, "expected.txt"))) {
+		t.Fatalf("Sink output differs: %q", got)
+	}
+}
+
+func runGoCommand(t *testing.T, root, target string, input []byte) []byte {
+	t.Helper()
+	cmd := exec.Command("go", "run", target)
+	cmd.Dir = root
+	cmd.Stdin = bytes.NewReader(input)
+	output, err := cmd.Output()
+	if err != nil {
+		if exit, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("%s: %v\n%s", target, err, exit.Stderr)
+		}
+		t.Fatal(err)
+	}
+	return output
+}
+
+func requireTerraform(t *testing.T) string {
+	t.Helper()
+	output, err := exec.Command("terraform", "version", "-json").Output()
+	if err != nil {
+		t.Skipf("Terraform is required to run binary Source snapshot tests: %v", err)
+	}
+	var version struct {
+		Version string `json:"terraform_version"`
+	}
+	if err := json.Unmarshal(output, &version); err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join(repoRoot(t), "testdata", "golden", "environments", "terraform-1.17.1", "terraform-version"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version.Version != string(bytes.TrimSpace(want)) {
+		t.Skipf("snapshot requires Terraform %s; current version is %s", bytes.TrimSpace(want), version.Version)
+	}
+	return version.Version
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test file")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+}
+
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}

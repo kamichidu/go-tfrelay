@@ -1,0 +1,3 @@
+{{range .Resources}}Resource: {{.Type}}.{{.Name}}
+{{range .Instances}}Value: {{index .Attributes "input"}}
+{{end}}{{end -}}

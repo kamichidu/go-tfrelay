@@ -1,0 +1,21 @@
+{
+  "resources": [
+    {
+      "__id__": "<generated>",
+      "type": "terraform_data",
+      "name": "second/first",
+      "provider": "provider-b",
+      "instances": [
+        {"attributes": {"input": "\"two\""}, "sensitive_attributes": null},
+        {"attributes": {"input": "\"one\""}, "sensitive_attributes": null}
+      ]
+    },
+    {
+      "__id__": "<generated>",
+      "type": "time_offset",
+      "name": "fixed",
+      "provider": "provider-time",
+      "instances": [{"attributes": {"offset_days": "1"}, "sensitive_attributes": null}]
+    }
+  ]
+}

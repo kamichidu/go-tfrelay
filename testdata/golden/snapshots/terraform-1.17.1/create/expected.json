@@ -1,0 +1,83 @@
+{
+  "resources": [
+    {
+      "__id__": "<generated>",
+      "instances": [
+        {
+          "attributes": {
+            "length": 24,
+            "lower": false,
+            "min_lower": 0,
+            "min_numeric": 0,
+            "min_special": 0,
+            "min_upper": 0,
+            "number": true,
+            "numeric": true,
+            "override_special": null,
+            "special": true,
+            "upper": true
+          },
+          "sensitive_attributes": null
+        }
+      ],
+      "name": "defaulted",
+      "provider": "tfrelay-source-planfile",
+      "type": "random_password"
+    },
+    {
+      "__id__": "<generated>",
+      "instances": [
+        {
+          "attributes": {
+            "store": null,
+            "triggers_replace": null
+          },
+          "sensitive_attributes": null
+        }
+      ],
+      "name": "dependent",
+      "provider": "tfrelay-source-planfile",
+      "type": "terraform_data"
+    },
+    {
+      "__id__": "<generated>",
+      "instances": [
+        {
+          "attributes": {
+            "input": {
+              "explicit": "declared value",
+              "number": 7
+            },
+            "store": null,
+            "triggers_replace": null
+          },
+          "sensitive_attributes": null
+        }
+      ],
+      "name": "fixture",
+      "provider": "tfrelay-source-planfile",
+      "type": "terraform_data"
+    },
+    {
+      "__id__": "<generated>",
+      "instances": [
+        {
+          "attributes": {
+            "base_rfc3339": "2030-01-01T00:00:00Z",
+            "offset_days": 1,
+            "offset_hours": null,
+            "offset_minutes": null,
+            "offset_months": null,
+            "offset_seconds": null,
+            "offset_years": null,
+            "triggers": null
+          },
+          "sensitive_attributes": null
+        }
+      ],
+      "name": "fixed",
+      "provider": "tfrelay-source-planfile",
+      "type": "time_offset"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "resources": [
+    {
+      "__id__": "resource-a",
+      "type": "terraform_data",
+      "name": "first",
+      "provider": "provider-a",
+      "instances": [{"attributes": {"input": "\"one\""}, "sensitive_attributes": null}]
+    },
+    {
+      "__id__": "resource-b",
+      "type": "terraform_data",
+      "name": "second",
+      "provider": "provider-b",
+      "instances": [{"attributes": {"input": "\"two\""}, "sensitive_attributes": null}]
+    },
+    {
+      "__id__": "resource-c",
+      "type": "time_offset",
+      "name": "fixed",
+      "provider": "provider-time",
+      "instances": [{"attributes": {"offset_days": "1"}, "sensitive_attributes": null}]
+    }
+  ]
+}
