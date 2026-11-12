@@ -62,7 +62,7 @@ type usageCommand struct{ command }
 
 func (c *usageCommand) RegisterFlags(ctx context.Context, fs *flagshim.FlagSet) context.Context {
 	ctx = c.command.RegisterFlags(ctx, fs)
-	fs.Usage = func() { fmt.Fprint(fs.Output(), usageStr) }
+	fs.Usage = func() { _, _ = fmt.Fprint(fs.Output(), usageStr) }
 	return ctx
 }
 

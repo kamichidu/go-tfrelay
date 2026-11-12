@@ -19,7 +19,7 @@ func TestPlanMappingRecursiveUnknownSensitiveAndIdentity(t *testing.T) {
       ],"child_modules":[{"resources":[
         {"address":"module.child.aws_x.item[\"blue\"]","type":"aws_x","name":"item","provider_name":"registry/x","index":"blue","values":{"nested":{"known":2}}}
       ]}] }},
-      "resource_changes":[{"address":"aws_x.item[0]","change":{"after_unknown":{"nested":{"missing":true},"items":[false,true],"whole_missing":{"leaf":true}},"after_sensitive":{"nested":{"known":true}}}}]
+      "resource_changes":[{"address":"aws_x.item[0]","change":{"after_unknown":{"nested":{"missing":true},"items":[false,true],"whole_missing":{"leaf":true}},"after_sensitive":{"nested":{"known":true,"missing":true}}}}]
     }`)
 	got, err := decodeSnapshot(input, true)
 	if err != nil {
@@ -55,8 +55,12 @@ func TestPlanMappingRecursiveUnknownSensitiveAndIdentity(t *testing.T) {
 	if string(known["value"]) != `1` {
 		t.Fatalf("known number lost precision/value: %s", known["value"])
 	}
-	if string(values["missing"]) != `{"state":"unknown"}` {
+	if string(values["missing"]) != `{"state":"unknown","sensitive":true}` {
 		t.Fatalf("explicit missing unknown path not materialized: %s", values["missing"])
+	}
+	var missingSensitive map[string]json.RawMessage
+	if err := json.Unmarshal(values["missing"], &missingSensitive); err != nil || string(missingSensitive["sensitive"]) != `true` {
+		t.Fatalf("missing nested sensitive flag lost: %s (%v)", values["missing"], err)
 	}
 	var wholeMissing map[string]json.RawMessage
 	if err := json.Unmarshal(attrs["whole_missing"], &wholeMissing); err != nil {
@@ -118,6 +122,10 @@ func TestStateMappingAndPlanEnvelopeValidation(t *testing.T) {
 	if _, err := decodeSnapshot(sparseArray, true); err == nil || !strings.Contains(err.Error(), "array path") {
 		t.Fatalf("missing sparse array semantics should fail clearly, got %v", err)
 	}
+	longArrayMask := []byte(`{"planned_values":{"root_module":{"resources":[{"address":"x.y","type":"x","name":"y","values":{"items":["known"]}}]}},"resource_changes":[{"address":"x.y","change":{"after_unknown":{"items":[false,true]}}}]}`)
+	if _, err := decodeSnapshot(longArrayMask, true); err == nil || !strings.Contains(err.Error(), "beyond the corresponding planned value length") {
+		t.Fatalf("out-of-range array mask should be rejected without shifting indices, got %v", err)
+	}
 }
 
 func TestCLIFlagsAndTerraformInvocations(t *testing.T) {
@@ -139,8 +147,10 @@ func TestCLIFlagsAndTerraformInvocations(t *testing.T) {
 
 	fixture := `{"planned_values":{"root_module":{"resources":[]}}}`
 	var calls [][]string
+	var terraformPath string
 	c := &command{lookPath: func(string) (string, error) { return "fake-terraform", nil }}
-	c.commandFactory = func(_ context.Context, _ string, args ...string) *exec.Cmd {
+	c.commandFactory = func(_ context.Context, path string, args ...string) *exec.Cmd {
+		terraformPath = path
 		calls = append(calls, append([]string(nil), args...))
 		if len(args) > 0 && args[0] == "show" {
 			return exec.Command("printf", "%s", fixture)
@@ -154,6 +164,9 @@ func TestCLIFlagsAndTerraformInvocations(t *testing.T) {
 	}
 	if len(calls) != 2 || !reflect.DeepEqual(calls[0], []string{"plan", "-out=p.tfplan", "-var=a=b"}) || !reflect.DeepEqual(calls[1], []string{"show", "-json", "p.tfplan"}) {
 		t.Fatalf("terraform args=%v", calls)
+	}
+	if terraformPath != "fake-terraform" {
+		t.Fatalf("Terraform executable path=%q", terraformPath)
 	}
 	if !strings.Contains(out.String(), `"snapshot_kind": "planned"`) {
 		t.Fatalf("stdout=%s", out.String())

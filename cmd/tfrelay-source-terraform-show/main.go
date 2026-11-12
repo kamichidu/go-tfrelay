@@ -35,7 +35,7 @@ type command struct {
 
 func (*command) Name() string { return progName }
 func (c *command) RegisterFlags(ctx context.Context, fs *flagshim.FlagSet) context.Context {
-	fs.Usage = func() { fmt.Fprint(fs.Output(), usageStr) }
+	fs.Usage = func() { _, _ = fmt.Fprint(fs.Output(), usageStr) }
 	fs.BoolVar(&c.plan, "plan", false, "run terraform plan before showing the plan")
 	fs.StringVar(&c.planfile, "planfile", "", "plan file to show or create")
 	fs.StringVar(&c.statefile, "statefile", "", "state file to show")
@@ -50,13 +50,10 @@ func (c *command) Run(ctx context.Context, args []string) error {
 		return errors.New("-plan requires -planfile")
 	}
 	if len(args) != 0 && !c.plan {
-		return errors.New("Terraform plan passthrough requires -plan")
-	}
-	if !c.plan && len(args) != 0 {
-		return errors.New("unexpected arguments")
+		return errors.New("terraform plan passthrough requires -plan")
 	}
 	if c.plan && hasOutArgument(args) {
-		return errors.New("Terraform plan passthrough must not specify -out; use -planfile")
+		return errors.New("terraform plan passthrough must not specify -out; use -planfile")
 	}
 
 	terraform, err := c.findTerraform()
