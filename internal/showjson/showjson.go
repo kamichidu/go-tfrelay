@@ -126,18 +126,18 @@ func DecodeSnapshot(input []byte, planned bool) (tfrelay.RelayData, error) {
 	root := envelope.Values.RootModule
 	if planned {
 		if envelope.Errored != nil && *envelope.Errored {
-			return out, errors.New("Terraform plan has errored=true")
+			return out, errors.New("terraform plan has errored=true")
 		}
 		if envelope.Complete != nil && !*envelope.Complete {
-			return out, errors.New("Terraform plan has complete=false")
+			return out, errors.New("terraform plan has complete=false")
 		}
 		if len(envelope.DeferredChanges) > 0 && string(envelope.DeferredChanges) != "null" {
 			var deferred []json.RawMessage
 			if err := json.Unmarshal(envelope.DeferredChanges, &deferred); err != nil {
-				return out, errors.New("Terraform plan deferred_changes must be an array")
+				return out, errors.New("terraform plan deferred_changes must be an array")
 			}
 			if len(deferred) != 0 {
-				return out, errors.New("Terraform plan has nonempty deferred_changes")
+				return out, errors.New("terraform plan has nonempty deferred_changes")
 			}
 		}
 		root = envelope.PlannedValues.RootModule
@@ -264,9 +264,38 @@ func walkModule(raw json.RawMessage, masks map[string]instanceMasks, providers m
 }
 
 func resourceBlockAddress(address string) string {
-	lastDot := strings.LastIndex(address, ".")
-	if bracket := strings.LastIndex(address, "["); bracket > lastDot && strings.HasSuffix(address, "]") {
-		return address[:bracket]
+	if !strings.HasSuffix(address, "]") {
+		return address
+	}
+	depth := 0
+	quoted, escaped := false, false
+	for i := len(address) - 1; i >= 0; i-- {
+		c := address[i]
+		if quoted {
+			if c == '"' && !escaped {
+				quoted = false
+			}
+			if c == '\\' && !escaped {
+				escaped = true
+			} else {
+				escaped = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			quoted = true
+		case ']':
+			depth++
+		case '[':
+			depth--
+			if depth == 0 {
+				if i > 0 && address[i-1] != '.' {
+					return address[:i]
+				}
+				return address
+			}
+		}
 	}
 	return address
 }
@@ -375,7 +404,11 @@ func normalizeValue(v jsonValue, present bool, unknown, sensitive jsonValue, inh
 		}
 		for key, unknownChild := range maskChildren(unknown) {
 			if _, ok := values[key]; !ok && maskHasTrue(unknownChild) {
-				values[key] = tfrelay.Value{State: "unknown", Sensitive: maskTrue(childMask(sensitive, key)) || out.Sensitive}
+				childValue, err := materializeUnknownMask(unknownChild, childMask(sensitive, key), out.Sensitive)
+				if err != nil {
+					return out, err
+				}
+				values[key] = childValue
 			}
 		}
 		encoded, err := json.Marshal(values)
@@ -403,7 +436,7 @@ func normalizeValue(v jsonValue, present bool, unknown, sensitive jsonValue, inh
 		}
 		for i, unknownChild := range unknown.arr {
 			if i >= len(values) && maskHasTrue(unknownChild) {
-				values = append(values, tfrelay.Value{State: "unknown", Sensitive: out.Sensitive})
+				return out, errors.New("cannot materialize an after_unknown array path beyond the corresponding planned value length")
 			}
 		}
 		encoded, err := json.Marshal(values)

@@ -109,7 +109,7 @@ func (c *command) Run(ctx context.Context, _ []string) error {
 	if err != nil {
 		return err
 	}
-	defer wc.Close()
+	defer func() { _ = wc.Close() }()
 
 	var data tfrelay.RelayData
 	jd := json.NewDecoder(flagshim.MustStdinFromContext(ctx))

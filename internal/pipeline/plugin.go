@@ -14,7 +14,7 @@ import (
 func (p *Pipeline) mergeReader(r io.Reader, cfg config.RelayPluginConfig) io.Reader {
 	pr, pw := io.Pipe()
 	go func() {
-		defer pw.Close()
+		defer func() { _ = pw.Close() }()
 
 		var x tfrelay.RelayData
 		if err := decodeJSON(r, &x); err != nil {
@@ -67,7 +67,7 @@ func (p *Pipeline) mergeReader(r io.Reader, cfg config.RelayPluginConfig) io.Rea
 func (p *Pipeline) wrapReader(r io.Reader, cfg config.RelayPluginConfig) io.Reader {
 	pr, pw := io.Pipe()
 	go func() {
-		defer pw.Close()
+		defer func() { _ = pw.Close() }()
 
 		cmd := exec.Command(cfg.Command, cfg.Args...)
 		cmd.Dir = cfg.Dir

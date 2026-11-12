@@ -21,7 +21,7 @@ func (p *Pipeline) Do(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var r io.Reader = strings.NewReader(`{}`)
+	var r io.Reader = strings.NewReader(`{"ir_version":2,"snapshot_kind":"state"}`)
 	for _, cfg := range p.Config.Plugins.Source {
 		r = p.mergeReader(r, cfg)
 	}
@@ -33,7 +33,7 @@ func (p *Pipeline) Do(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer sink.Close()
+	defer func() { _ = sink.Close() }()
 
 	var data tfrelay.RelayData
 	if err := decodeJSON(r, &data); err != nil {
