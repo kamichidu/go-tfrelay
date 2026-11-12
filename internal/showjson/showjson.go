@@ -449,15 +449,14 @@ func materializeUnknownMask(unknown, sensitive jsonValue, inheritedSensitive boo
 			if i < len(sensitive.arr) {
 				sensitiveChild = sensitive.arr[i]
 			}
-			if maskHasTrue(mask) {
-				child, err := materializeUnknownMask(mask, sensitiveChild, inheritedSensitive)
-				if err != nil {
-					return tfrelay.Value{}, err
-				}
-				children[i] = child
-			} else {
-				children[i] = tfrelay.Value{State: "unknown", Sensitive: inheritedSensitive}
+			if !maskHasTrue(mask) {
+				return tfrelay.Value{}, errors.New("cannot materialize an after_unknown array path when the corresponding planned value is absent")
 			}
+			child, err := materializeUnknownMask(mask, sensitiveChild, inheritedSensitive)
+			if err != nil {
+				return tfrelay.Value{}, err
+			}
+			children[i] = child
 		}
 		encoded, err := json.Marshal(children)
 		if err != nil {

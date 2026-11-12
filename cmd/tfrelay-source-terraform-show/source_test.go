@@ -114,6 +114,10 @@ func TestStateMappingAndPlanEnvelopeValidation(t *testing.T) {
 			}
 		})
 	}
+	sparseArray := []byte(`{"planned_values":{"root_module":{"resources":[{"address":"x.y","type":"x","name":"y","values":{}}]}},"resource_changes":[{"address":"x.y","change":{"after_unknown":{"items":[false,true]}}}]}`)
+	if _, err := decodeSnapshot(sparseArray, true); err == nil || !strings.Contains(err.Error(), "array path") {
+		t.Fatalf("missing sparse array semantics should fail clearly, got %v", err)
+	}
 }
 
 func TestCLIFlagsAndTerraformInvocations(t *testing.T) {
