@@ -28,7 +28,6 @@ func (*command) Name() string { return progName }
 func (c *command) RegisterFlags(ctx context.Context, fs *flagshim.FlagSet) context.Context {
 	fs.StringVar(&c.configFile, "config", "", "The configuration file path.")
 	fs.Alias("config", "c")
-	fs.Bool("help", false, "Show this message.")
 	return ctx
 }
 
@@ -61,8 +60,8 @@ func (c *command) Run(ctx context.Context, _ []string) error {
 
 type usageCommand struct{ command }
 
-func (*usageCommand) RegisterFlags(ctx context.Context, fs *flagshim.FlagSet) context.Context {
-	ctx = (&command{}).RegisterFlags(ctx, fs)
+func (c *usageCommand) RegisterFlags(ctx context.Context, fs *flagshim.FlagSet) context.Context {
+	ctx = c.command.RegisterFlags(ctx, fs)
 	fs.Usage = func() { fmt.Fprint(fs.Output(), usageStr) }
 	return ctx
 }
@@ -71,6 +70,15 @@ func run(stdout, stderr io.Writer, args []string) int {
 	colog.Register()
 	colog.SetOutput(stderr)
 	colog.SetPrefix("[ " + progName + " ] ")
+	if len(args) > 1 {
+		for _, arg := range args[1:] {
+			if arg == "-help" {
+				fmt.Fprintln(stderr, "Error: flag provided but not defined: -help")
+				fmt.Fprint(stderr, usageStr)
+				return 2
+			}
+		}
+	}
 	return flagshim.Run(context.Background(), os.Stdin, stdout, stderr, &usageCommand{}, args)
 }
 
