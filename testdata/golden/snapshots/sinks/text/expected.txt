@@ -1,2 +1,2 @@
 Resource: terraform_data.fixture
-Value: "\"declared value\""
+Value: "declared value"

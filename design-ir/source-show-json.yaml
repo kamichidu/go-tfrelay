@@ -4,22 +4,20 @@ schema_ref:
   sha256: 9b109dbc7ac09b32d3dbe2e233eed7da1378bc912d0e84c479c3ed0bed9f7103
 model:
   id: tfrelay-source-show-json
-  title: Terraform show JSON Source migration
+  title: Terraform show JSON Source
   description: >-
-    Authoritative semantic design for replacing tfrelay's private binary plan
-    decoding with Terraform's public show -json representation while preserving
-    the Source to Transform to Sink architecture. This document is a proposed
-    design contract and does not describe an implemented change.
-  domain: Terraform plan snapshot Source
+    Authoritative semantic design for normalizing Terraform show -json state
+    and plan snapshots while preserving the Source to Transform to Sink architecture.
+  domain: Terraform snapshot Source
   profile: source-snapshot-ir-v2
 nodes:
   - id: REQ-SNAPSHOT
     level: system_requirement
     kind: normative_requirement
     statement: >-
-      The primary Source output MUST be a snapshot of the resource configuration
-      Terraform plans to exist after applying the plan. It is planned post-apply
-      state, not a claim that apply ran or that remote state was observed.
+      For plan input, Source output MUST snapshot the resources Terraform plans
+      to exist after apply, without claiming apply ran. For state input, it MUST
+      snapshot the resources in the state Terraform returned.
     attributes:
       norm: MUST
       scope: resource snapshot
@@ -209,6 +207,7 @@ nodes:
       missing_mask: retain planned known/null value; do not infer unknown from mask absence
       deleted_resource: omit when absent from planned_values
       prior_state: unused
+      state_values: values.root_module is authoritative for state membership and values
       output_changes: excluded from Resource snapshot
       proposed_unknown: not consumed; it does not affect values, membership, masks, or validation
     provenance:
@@ -228,14 +227,17 @@ nodes:
       placeholder; false or absent mask paths do not erase known planned values.
       A true sensitive mask marks its path sensitive. Effective sensitivity is
       inherited by descendants, while a sensitive child does not mark siblings.
-      Masks are partial metadata: structural differences, absent paths, and
+      A true after_unknown path missing from planned_values.values is materialized
+      as an unknown Value at that path; absence in both remains absent. Masks are partial metadata: structural differences, absent paths, and
       known nulls do not by themselves make the plan invalid. Do not substitute
       change.after or consume proposed_unknown.
     attributes:
       mask_merge:
         unknown: true wins over a value or null placeholder
         sensitive: logical OR of planned_values.sensitive_values and after_sensitive
-        missing_mask_path: no additional information; retain planned value as represented
+        missing_unknown_path: explicitly true paths materialize an unknown Value
+        missing_in_values_and_mask: keep absent
+        missing_sensitive_path: no additional information; retain planned value as represented
         differing_mask_shape: merge matching paths; ignore absent paths without rejecting the plan
         known_null: remains known unless a true unknown mask marks that path
         proposed_unknown: not consumed; it does not affect values, membership, masks, or validation
@@ -321,7 +323,8 @@ nodes:
     level: system_design
     kind: design_choice
     statement: >-
-      Source keeps its saved-plan path input and invokes terraform show -json.
+      Source supports current state, an explicit state file, an existing plan
+      file, or explicit plan generation followed by terraform show -json.
       It converts the command's external JSON to version-2 RelayData and never
       forwards Terraform's plan document. Transform consumes and emits the
       same RelayData version, preserving Value state, exact known values,
@@ -333,9 +336,9 @@ nodes:
       omitted unless a separately explicit declassification policy applies.
     attributes:
       source:
-        input_boundary: saved-plan path; invoke terraform show -json locally
+        input_boundary: current state, state file, existing plan file, or explicit plan request
         output: RelayData ir_version 2
-        side_effects: no init, plan, apply, refresh, or provider network calls
+        side_effects: explicit plan request only; never init, apply, refresh, workspace change, or backend repair
         logs: no plan values or sensitive values
         multi_source_merge: reject mixed ir_version values
       transform:
@@ -351,40 +354,22 @@ nodes:
     level: system_design
     kind: design_choice
     statement: >-
-      Version 2 is not wire-compatible with legacy raw attribute JSON. Migration
-      MUST be staged: readers and plugins first gain explicit version-1 and
-      version-2 handling; version-2-capable Transform and Sink plugins are
-      verified; then the Source is enabled for version 2. Unknown fields or
-      version-2 Values MUST NOT be silently downgraded to version 1 because that
-      would erase unknown and sensitivity semantics. Legacy templates continue
-      to operate only through an explicit version-1 projection.
+      Version 2 is the sole supported wire contract. There is no version-1
+      compatibility, conversion, migration, or projection path. Unknown fields
+      or values MUST NOT be silently downgraded because that erases semantics.
     attributes:
       version_field: ir_version
-      versions:
-        1: legacy raw JSON attributes and sensitive_attributes path mask
-        2: recursive Value attributes and per-value sensitivity
-      legacy_detection: missing ir_version means version 1
-      upgrade_v1_to_v2:
-        raw_value: wrap as state known without changing the JSON value
-        null: wrap as state known with value null
-        missing_attribute: keep absent; never infer unknown
-        sensitive_attributes: map its explicit paths to recursive sensitive flags
-        unrecoverable: unknown values and full Terraform addresses omitted by version 1 cannot be reconstructed
-      downgrade_v2_to_v1:
-        default: fail when unknown, nested state, Terraform address, or sensitivity cannot be represented
-        allowed_loss: only through an explicit configured projection that reports the loss
-      rollout:
-        - add dual-version decoding and version-preserving Transform/Sink support
-        - validate all configured plugins against version 2
-        - enable Source version 2 only after plugin compatibility is established
-      downgrade: explicit lossy projection only, never implicit
+      supported_version: 2
+      legacy_detection: reject missing or non-2 ir_version
+      migration: none
+      downgrade: unsupported
   - id: DEC-GOLDEN-ACCEPTANCE
     level: system_design
     kind: design_choice
     statement: >-
       Acceptance uses the independent Source, Transform, and Sink Golden Set
-      contracts. Terraform input snapshots are generated with the pinned
-      Terraform and provider environment, and drift is detected in CI. Golden
+      contracts. Committed Terraform show JSON snapshots are normalized against
+      Source output, and drift is detected in CI without Terraform initialization. Golden
       updates remain explicit reviewed operations; CI does not rewrite them.
     attributes:
       existing_layout: testdata/golden/{cases,environments,snapshots}
@@ -395,7 +380,7 @@ nodes:
       environment:
         terraform: exact pinned version
         providers: exact versions and committed lockfile
-        init: terraform init -lockfile=readonly
+        init: never; Terraform setup is external to the Source and golden check
       compare:
         objects: semantic key-order-independent comparison
         plan_timestamp: normalize only explicitly documented nondeterministic field
@@ -405,7 +390,7 @@ nodes:
     level: implementation
     kind: inspected_implementation
     statement: >-
-      At the reviewed baseline, RelayData contains resources; Resource contains
+      At the historical reviewed baseline, RelayData contained resources; Resource contained
       __id__, type, name, provider, and instances; Instance contains optional
       index_key, raw JSON attributes, and sensitive_attributes. The planfile
       Source reads binary plan data, applies create/update/delete changes to
@@ -597,19 +582,19 @@ representation_gaps:
           role: observed-plan-json
 extensions:
   "github.com/kamichidu/go-tfrelay/source-show-json":
-    document_status: proposed_design
+    document_status: implemented_contract
     source_boundary:
-      input: saved-plan path; invoke terraform show -json locally
+      input: current state by default; optional statefile, planfile, or explicit plan generation
       implementation_boundary: >-
-        The Source retains its saved-plan path input and invokes terraform show
-        -json. The command's JSON is decoded at the Source boundary and
+        The Source invokes terraform show -json. Explicit plan mode runs
+        terraform plan -out=FILE each time before showing the plan. The JSON is decoded at the Source boundary and
         normalized to RelayData ir_version 2 before it enters the existing
         plugin pipeline.
-      no_terraform_side_effects:
-        - init
-        - plan
+      forbidden_operations:
         - apply
         - refresh
+        - workspace selection
+        - backend repair or configuration
         - provider network access
     internal_ir:
       ir_version: 2
@@ -628,9 +613,7 @@ extensions:
           index_key: optional canonical JSON scalar token in a string; absent for singleton
           attributes: map from attribute name to recursive Value
         added_fields:
-          address: required for Terraform plan Source; exact absolute Terraform instance address including module and resource index qualifiers
-        legacy_fields:
-          sensitive_attributes: accepted only while decoding version 1; replaced by Value.sensitive in version 2
+          address: required for state and plan; exact absolute Terraform instance address including module and resource index qualifiers
       value:
         state: required enum known|unknown
         type: optional JSON-native kind only; allowed values ["null", boolean, number, string, object, array]
@@ -660,23 +643,25 @@ extensions:
         deferred_changes_nonempty: reject as unsupported/deferred
         applyable_false: do not reject for this condition alone
       resource_walk:
-        primary: planned_values.root_module.resources
+        plan_primary: planned_values.root_module.resources
+        state_primary: values.root_module.resources
         nested: recursively walk child_modules.resources
         unknown_values: fields may be omitted or null; matching after_unknown can identify unknown paths
         address: require the exact absolute resource address from the resource value object
         output_changes: exclude because RelayData models resources, not outputs
       attributes:
-        primary_values: resource.values
+        plan_primary_values: planned_values.root_module resource values
+        state_primary_values: values.root_module resource values
         fallback: forbidden; change.after is never substituted for planned_values values
         unknown_mask: resource_changes[].change.after_unknown joined by exact instance address and recursively applied
         sensitive_masks:
           - resource.sensitive_values
           - resource_changes[].change.after_sensitive
-        mask_merge: recursively apply matching true paths; absent or differently shaped paths add no information and do not alone reject input
+        mask_merge: recursively apply masks; explicitly true after_unknown paths missing from values materialize unknowns; absent in both remains absent
         proposed_unknown: not consumed for values, membership, masks, or validation
       resource_identity:
-        instance_address_source: resource.address from planned_values only
-        index_source: resource.index from planned_values; encode the original string or number as a canonical JSON scalar token
+        instance_address_source: resource.address from the authoritative state or plan resource object
+        index_source: resource.index from the authoritative state or plan resource; encode the string or number as a canonical JSON scalar token
         moved_resource: use the new planned address; previous_address is not snapshot identity
         group_resources: same containing module-instance path plus mode, type, and local name
         split_instances: retain per-instance address and index_key
@@ -694,7 +679,7 @@ extensions:
         deleted_instance: exclude when absent from planned_values, regardless of change.after
     pipeline_contract:
       source:
-        accepts: saved planfile path
+        accepts: current state by default, statefile, existing planfile, or explicit -plan -planfile
         invokes: terraform show -json; decode its stdout as external JSON
         emits: RelayData ir_version 2
         preserves: [unknown, known null, partial nested values, sensitivity, resource address, instance key]
@@ -712,18 +697,12 @@ extensions:
     compatibility:
       breaking_change: attribute map values change from raw JSON to recursive Value records
       version_discriminator: ir_version
-      version_1: raw JSON attributes and sensitive_attributes path mask
-      version_2: recursive Value attributes and per-value sensitivity
-      legacy_detection: missing ir_version means version 1
-      upgrade_v1_to_v2:
-        raw_value: wrap as known
-        null: wrap as known null
-        missing_attribute: remain absent; do not infer unknown
-        sensitive_attributes: map valid legacy mask paths to Value.sensitive; fail on unsupported mask structure
-        limitation: lost unknown values and Terraform addresses cannot be restored
+      supported_version: 2 only
+      legacy_detection: reject missing or non-2 ir_version
+      migration: none
     acceptance:
       source_unit: fixed plan.json to version-2 expected.json without Terraform
-      source_end_to_end: saved planfile path through terraform show -json to expected.json
+      source_end_to_end: CLI state and plan modes through terraform show -json to RelayData
       fixed_source_expected: version-2 expected.json for each environment and case
       transform_sink_contracts: Terraform-independent golden inputs and expected outputs
       semantic_json_compare:
@@ -740,11 +719,11 @@ extensions:
         - count and for_each instance addresses including numeric and string index keys
         - imported prior state producing an update plan
         - nested module resources and data resources
-        - version-1 legacy input conversion and explicit version-2 downgrade rejection/loss reporting
+        - reject errored, incomplete, or deferred plans
       ci:
         terraform: exact version per environment
         providers: exact pinned constraints with committed lockfile
-        init: terraform init -lockfile=readonly
+        init: external precondition; source and ordinary fixture checks never invoke init
         commands: [terraform plan -out, terraform show -json]
-        result: compare regenerated plan.json and Source expected.json; fail on drift
+        result: compare fixed plan.json or state.json inputs and Source expected.json; fail on drift
         golden_updates: explicit reviewed command only, never CI

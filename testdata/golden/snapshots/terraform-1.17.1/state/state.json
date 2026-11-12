@@ -1,0 +1,25 @@
+{
+  "format_version": "1.0",
+  "timestamp": null,
+  "values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_test.main",
+          "mode": "managed",
+          "name": "main",
+          "provider_name": "registry.example/test",
+          "sensitive_values": {
+            "secret": true
+          },
+          "type": "aws_test",
+          "values": {
+            "nullable": null,
+            "number": 12345678901234567890,
+            "secret": "state-secret"
+          }
+        }
+      ]
+    }
+  }
+}

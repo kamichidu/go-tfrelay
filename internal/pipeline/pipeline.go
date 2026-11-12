@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 
@@ -37,6 +38,12 @@ func (p *Pipeline) Do(ctx context.Context) error {
 	var data tfrelay.RelayData
 	if err := decodeJSON(r, &data); err != nil {
 		return err
+	}
+	if data.IRVersion != 2 {
+		return fmt.Errorf("unsupported RelayData ir_version %d", data.IRVersion)
+	}
+	if data.SnapshotKind != "planned" && data.SnapshotKind != "state" {
+		return fmt.Errorf("unsupported RelayData snapshot_kind %q", data.SnapshotKind)
 	}
 	if err := encodeJSON(sink, &data); err != nil {
 		return err
