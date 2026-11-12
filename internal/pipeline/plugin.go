@@ -17,10 +17,12 @@ func (p *Pipeline) mergeReader(r io.Reader, cfg config.RelayPluginConfig) io.Rea
 		defer func() { _ = pw.Close() }()
 
 		var x tfrelay.RelayData
-		if err := decodeJSON(r, &x); err != nil {
-			log.Printf("error: failed to merge: %v", err)
-			pw.CloseWithError(err)
-			return
+		if r != nil {
+			if err := decodeJSON(r, &x); err != nil {
+				log.Printf("error: failed to merge: %v", err)
+				pw.CloseWithError(err)
+				return
+			}
 		}
 
 		var stdout bytes.Buffer
@@ -44,7 +46,7 @@ func (p *Pipeline) mergeReader(r io.Reader, cfg config.RelayPluginConfig) io.Rea
 			pw.CloseWithError(err)
 			return
 		}
-		if y.IRVersion != 2 || (y.SnapshotKind != "planned" && y.SnapshotKind != "state") {
+		if y.IRVersion != 1 || (y.SnapshotKind != "planned" && y.SnapshotKind != "state") {
 			pw.CloseWithError(fmt.Errorf("source emitted unsupported RelayData contract: ir_version=%d snapshot_kind=%q", y.IRVersion, y.SnapshotKind))
 			return
 		}

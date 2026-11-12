@@ -22,7 +22,7 @@ func (c *command) Run(ctx context.Context, _ []string) error {
 	if err := json.NewDecoder(flagshim.MustStdinFromContext(ctx)).Decode(&data); err != nil {
 		return fmt.Errorf("decode input: %w", err)
 	}
-	if data.IRVersion != 2 || (data.SnapshotKind != "planned" && data.SnapshotKind != "state") {
+	if data.IRVersion != 1 || (data.SnapshotKind != "planned" && data.SnapshotKind != "state") {
 		return fmt.Errorf("unsupported RelayData contract: ir_version=%d snapshot_kind=%q", data.IRVersion, data.SnapshotKind)
 	}
 
