@@ -54,7 +54,7 @@ func TestCLIExplicitConfigPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, flag := range []string{"-config", "-c"} {
+	for _, flag := range []string{"--config", "-c"} {
 		t.Run(flag, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			code := run(&stdout, &stderr, []string{progName, flag, configPath})
