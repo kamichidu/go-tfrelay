@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +13,7 @@ import (
 	"text/template"
 
 	"comail.io/go/colog"
+	"github.com/kamichidu/go-flagshim"
 	"github.com/kamichidu/go-tfrelay"
 	"github.com/kamichidu/gobst/funcs"
 )
@@ -67,10 +68,10 @@ func (*nopCloser) Close() error {
 	return nil
 }
 
-func newWriteCloser(name string) (io.WriteCloser, error) {
+func newWriteCloser(name string, stdout io.Writer) (io.WriteCloser, error) {
 	if name == "-" {
 		return &nopCloser{
-			Writer: os.Stdout,
+			Writer: stdout,
 		}, nil
 	}
 
@@ -85,27 +86,31 @@ func newWriteCloser(name string) (io.WriteCloser, error) {
 	return file, nil
 }
 
-func main() {
-	colog.Register()
-	colog.SetPrefix("[ tfrelay-sink-text ] ")
+type command struct {
+	outFile     string
+	templateStr string
+}
 
-	var (
-		outFile     = getenvDefault("TFRELAY_SINK_TEXT_OUTPUT", "-")
-		templateStr = getenvDefault("TFRELAY_SINK_TEXT_TEMPLATE", "")
-	)
-	flag.StringVar(&outFile, "out", outFile, "")
-	flag.Parse()
+func (*command) Name() string { return "tfrelay-sink-text" }
+func (c *command) RegisterFlags(ctx context.Context, fs *flagshim.FlagSet) context.Context {
+	c.outFile = getenvDefault("TFRELAY_SINK_TEXT_OUTPUT", "-")
+	c.templateStr = getenvDefault("TFRELAY_SINK_TEXT_TEMPLATE", "")
+	fs.StringVar(&c.outFile, "out", c.outFile, "")
+	return ctx
+}
 
-	wc, err := newWriteCloser(outFile)
+func (c *command) Run(ctx context.Context, _ []string) error {
+
+	wc, err := newWriteCloser(c.outFile, flagshim.MustStdoutFromContext(ctx))
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 	defer wc.Close()
 
 	var data tfrelay.RelayData
-	jd := json.NewDecoder(os.Stdin)
+	jd := json.NewDecoder(flagshim.MustStdinFromContext(ctx))
 	if err := jd.Decode(&data); err != nil {
-		log.Panic(err)
+		return fmt.Errorf("decode input: %w", err)
 	}
 
 	tpl := template.New("tfrelay-sink-text")
@@ -126,8 +131,15 @@ func main() {
 		return buffer.String(), nil
 	})
 	tpl = tpl.Funcs(funcs.Funcs())
-	tpl = template.Must(tpl.Parse(templateStr))
+	tpl = template.Must(tpl.Parse(c.templateStr))
 	if err := tpl.Execute(wc, data); err != nil {
-		log.Panic(err)
+		return fmt.Errorf("execute template: %w", err)
 	}
+	return nil
+}
+
+func main() {
+	colog.Register()
+	colog.SetPrefix("[ tfrelay-sink-text ] ")
+	os.Exit(flagshim.Run(context.Background(), os.Stdin, os.Stdout, os.Stderr, &command{}, os.Args))
 }

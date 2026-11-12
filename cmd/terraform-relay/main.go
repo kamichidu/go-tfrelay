@@ -3,54 +3,40 @@ package main
 import (
 	"context"
 	_ "embed"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 
 	"comail.io/go/colog"
+	"github.com/kamichidu/go-flagshim"
 	"github.com/kamichidu/go-tfrelay/internal/config"
 	"github.com/kamichidu/go-tfrelay/internal/pipeline"
 )
 
-const (
-	progName = "terraform-relay"
-)
+const progName = "terraform-relay"
 
-var (
-	//go:embed usage.txt
-	usageStr string
-)
+//go:embed usage.txt
+var usageStr string
 
-func run(stdout, stderr io.Writer, args []string) int {
-	colog.Register()
-	colog.SetOutput(stderr)
-	colog.SetPrefix("[ " + progName + " ] ")
+type command struct {
+	configFile string
+}
 
-	var (
-		showHelp   bool
-		configFile string
-	)
-	flgs := flag.NewFlagSet(progName, flag.ContinueOnError)
-	flgs.SetOutput(io.Discard)
-	flgs.BoolVar(&showHelp, "help", showHelp, "")
-	flgs.StringVar(&configFile, "config", configFile, "")
-	switch err := flgs.Parse(args[1:]); {
-	case errors.Is(err, flag.ErrHelp) || showHelp:
-		fmt.Fprintln(stdout, usageStr)
-		return 0
-	case err != nil:
-		log.Printf("error: invalid cli argument: %v", err)
-		fmt.Fprintln(stderr, usageStr)
-		return 2
-	}
+func (*command) Name() string { return progName }
 
+func (c *command) RegisterFlags(ctx context.Context, fs *flagshim.FlagSet) context.Context {
+	fs.StringVar(&c.configFile, "config", "", "The configuration file path.")
+	fs.Alias("config", "c")
+	fs.Bool("help", false, "Show this message.")
+	return ctx
+}
+
+func (c *command) Run(ctx context.Context, _ []string) error {
 	var loadConfig func() (*config.RelayConfig, error)
-	if configFile != "" {
+	if c.configFile != "" {
 		loadConfig = func() (*config.RelayConfig, error) {
-			return config.LoadRelayConfig(configFile)
+			return config.LoadRelayConfig(c.configFile)
 		}
 	} else {
 		loadConfig = func() (*config.RelayConfig, error) {
@@ -59,26 +45,33 @@ func run(stdout, stderr io.Writer, args []string) int {
 	}
 	cfg, err := loadConfig()
 	if err != nil {
-		log.Printf("error: invalid config file: %v", err)
-		return 1
+		return fmt.Errorf("invalid config file: %w", err)
 	}
 
 	log.Printf("debug: timeout %s", cfg.TimeoutDuration)
-	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, cfg.TimeoutDuration)
 	defer cancel()
 
-	pl := &pipeline.Pipeline{
-		Config:    cfg,
-		ErrWriter: os.Stderr,
-	}
+	pl := &pipeline.Pipeline{Config: cfg, ErrWriter: flagshim.MustStderrFromContext(ctx)}
 	if err := pl.Do(ctx); err != nil {
-		log.Printf("error: pipeline execution failed: %v", err)
-		return 1
+		return fmt.Errorf("pipeline execution failed: %w", err)
 	}
-	return 0
+	return nil
 }
 
-func main() {
-	os.Exit(run(os.Stdout, os.Stderr, os.Args))
+type usageCommand struct{ command }
+
+func (*usageCommand) RegisterFlags(ctx context.Context, fs *flagshim.FlagSet) context.Context {
+	ctx = (&command{}).RegisterFlags(ctx, fs)
+	fs.Usage = func() { fmt.Fprint(fs.Output(), usageStr) }
+	return ctx
 }
+
+func run(stdout, stderr io.Writer, args []string) int {
+	colog.Register()
+	colog.SetOutput(stderr)
+	colog.SetPrefix("[ " + progName + " ] ")
+	return flagshim.Run(context.Background(), os.Stdin, stdout, stderr, &usageCommand{}, args)
+}
+
+func main() { os.Exit(run(os.Stdout, os.Stderr, os.Args)) }

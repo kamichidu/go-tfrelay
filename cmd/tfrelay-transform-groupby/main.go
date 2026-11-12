@@ -1,24 +1,26 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
-	"flag"
+	"fmt"
 	"os"
 
 	"comail.io/go/colog"
+	"github.com/kamichidu/go-flagshim"
 	"github.com/kamichidu/go-tfrelay"
 )
 
-func main() {
-	colog.Register()
-	colog.SetPrefix("[ tfrelay-transform-groupby ] ")
+type command struct{}
 
-	flag.Parse()
-
+func (*command) Name() string { return "tfrelay-transform-groupby" }
+func (c *command) RegisterFlags(ctx context.Context, fs *flagshim.FlagSet) context.Context {
+	return ctx
+}
+func (c *command) Run(ctx context.Context, _ []string) error {
 	var data tfrelay.RelayData
-	jd := json.NewDecoder(os.Stdin)
-	if err := jd.Decode(&data); err != nil {
-		panic(err)
+	if err := json.NewDecoder(flagshim.MustStdinFromContext(ctx)).Decode(&data); err != nil {
+		return fmt.Errorf("decode input: %w", err)
 	}
 
 	// group by resource.type
@@ -35,9 +37,14 @@ func main() {
 	for _, v := range memo {
 		data.Resources = append(data.Resources, v)
 	}
-
-	je := json.NewEncoder(os.Stdout)
-	if err := je.Encode(&data); err != nil {
-		panic(err)
+	if err := json.NewEncoder(flagshim.MustStdoutFromContext(ctx)).Encode(&data); err != nil {
+		return fmt.Errorf("encode output: %w", err)
 	}
+	return nil
+}
+
+func main() {
+	colog.Register()
+	colog.SetPrefix("[ tfrelay-transform-groupby ] ")
+	os.Exit(flagshim.Run(context.Background(), os.Stdin, os.Stdout, os.Stderr, &command{}, os.Args))
 }
