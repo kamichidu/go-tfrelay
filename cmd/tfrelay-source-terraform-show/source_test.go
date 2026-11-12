@@ -25,7 +25,7 @@ func TestPlanMappingRecursiveUnknownSensitiveAndIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.IRVersion != 2 || got.SnapshotKind != "planned" || len(got.Resources) != 2 {
+	if got.IRVersion != 1 || got.SnapshotKind != "planned" || len(got.Resources) != 2 {
 		t.Fatalf("snapshot metadata/resources: %+v", got)
 	}
 	var attrs map[string]json.RawMessage

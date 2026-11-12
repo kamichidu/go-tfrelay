@@ -145,7 +145,7 @@ func DecodeSnapshot(input []byte, planned bool) (tfrelay.RelayData, error) {
 	if len(root) == 0 || string(root) == "null" {
 		return out, errors.New("show JSON omitted root module")
 	}
-	out.IRVersion = 2
+	out.IRVersion = 1
 	if planned {
 		out.SnapshotKind = "planned"
 	} else {
@@ -267,33 +267,28 @@ func resourceBlockAddress(address string) string {
 	if !strings.HasSuffix(address, "]") {
 		return address
 	}
-	depth := 0
 	quoted, escaped := false, false
-	for i := len(address) - 1; i >= 0; i-- {
+	lastIndex := -1
+	for i := 0; i < len(address); i++ {
 		c := address[i]
 		if quoted {
-			if c == '"' && !escaped {
-				quoted = false
-			}
-			if c == '\\' && !escaped {
-				escaped = true
-			} else {
+			if escaped {
 				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				quoted = false
 			}
 			continue
 		}
 		switch c {
 		case '"':
 			quoted = true
-		case ']':
-			depth++
 		case '[':
-			depth--
-			if depth == 0 {
-				if i > 0 && address[i-1] != '.' {
-					return address[:i]
-				}
-				return address
+			lastIndex = i
+		case ']':
+			if i == len(address)-1 && lastIndex > 0 && address[lastIndex-1] != '.' {
+				return address[:lastIndex]
 			}
 		}
 	}
@@ -474,7 +469,7 @@ func materializeUnknownMask(unknown, sensitive jsonValue, inheritedSensitive boo
 		if err != nil {
 			return tfrelay.Value{}, err
 		}
-		return tfrelay.Value{State: "known", Type: "object", Sensitive: inheritedSensitive, Value: encoded}, nil
+		return tfrelay.Value{State: "known", Type: "object", Sensitive: inheritedSensitive || maskTrue(sensitive), Value: encoded}, nil
 	case "array":
 		children := make([]tfrelay.Value, len(unknown.arr))
 		for i, mask := range unknown.arr {
@@ -495,7 +490,7 @@ func materializeUnknownMask(unknown, sensitive jsonValue, inheritedSensitive boo
 		if err != nil {
 			return tfrelay.Value{}, err
 		}
-		return tfrelay.Value{State: "known", Type: "array", Sensitive: inheritedSensitive, Value: encoded}, nil
+		return tfrelay.Value{State: "known", Type: "array", Sensitive: inheritedSensitive || maskTrue(sensitive), Value: encoded}, nil
 	}
 	return tfrelay.Value{}, nil
 }

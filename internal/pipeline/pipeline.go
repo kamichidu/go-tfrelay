@@ -21,7 +21,10 @@ func (p *Pipeline) Do(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var r io.Reader = strings.NewReader(`{"ir_version":2,"snapshot_kind":"state"}`)
+	var r io.Reader
+	if len(p.Config.Plugins.Source) == 0 {
+		r = strings.NewReader(`{"ir_version":1,"snapshot_kind":"state","resources":[]}`)
+	}
 	for _, cfg := range p.Config.Plugins.Source {
 		r = p.mergeReader(r, cfg)
 	}
@@ -39,7 +42,7 @@ func (p *Pipeline) Do(ctx context.Context) error {
 	if err := decodeJSON(r, &data); err != nil {
 		return err
 	}
-	if data.IRVersion != 2 {
+	if data.IRVersion != 1 {
 		return fmt.Errorf("unsupported RelayData ir_version %d", data.IRVersion)
 	}
 	if data.SnapshotKind != "planned" && data.SnapshotKind != "state" {

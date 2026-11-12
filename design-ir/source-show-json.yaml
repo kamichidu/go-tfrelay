@@ -9,7 +9,7 @@ model:
     Authoritative semantic design for normalizing Terraform show -json state
     and plan snapshots while preserving the Source to Transform to Sink architecture.
   domain: Terraform snapshot Source
-  profile: source-snapshot-ir-v2
+  profile: source-snapshot-ir-v1
 nodes:
   - id: REQ-SNAPSHOT
     level: system_requirement
@@ -90,13 +90,13 @@ nodes:
     level: system_design
     kind: design_choice
     statement: >-
-      The normalized contract uses IR version 2. The top-level resources array
+      The normalized contract uses IR version 1. The top-level resources array
       remains, with an explicit ir_version discriminator because recursive
       Value objects are incompatible with legacy raw JSON attribute values.
       Terraform format_version and terraform_version remain input metadata and
       are not copied into the internal IR.
     attributes:
-      choice: ir_version 2
+      choice: ir_version 1
       compatibility_reason: attribute value representation is breaking
   - id: DEC-VALUE
     level: system_design
@@ -252,7 +252,7 @@ nodes:
       Resource.Type and Resource.Name retain their current roles as Terraform
       type and local name. Instance.Address is added as the exact absolute
       Terraform instance address. Instance.IndexKey remains a string but, in
-      version 2, carries the canonical JSON scalar token from the plan's index
+      version 1, carries the canonical JSON scalar token from the plan's index
       field so a number and a quoted string remain distinct. A singleton omits
       index_key. Source groups instances by resource block within each module
       instance; Transform may regroup resources because every Instance retains
@@ -325,7 +325,7 @@ nodes:
     statement: >-
       Source supports current state, an explicit state file, an existing plan
       file, or explicit plan generation followed by terraform show -json.
-      It converts the command's external JSON to version-2 RelayData and never
+      It converts the command's external JSON to version-1 RelayData and never
       forwards Terraform's plan document. Transform consumes and emits the
       same RelayData version, preserving Value state, exact known values,
       per-instance addresses, indices, and sensitivity through grouping or other changes.
@@ -337,7 +337,7 @@ nodes:
     attributes:
       source:
         input_boundary: current state, state file, existing plan file, or explicit plan request
-        output: RelayData ir_version 2
+        output: RelayData ir_version 1
         side_effects: explicit plan request only; never init, apply, refresh, workspace change, or backend repair
         logs: no plan values or sensitive values
         multi_source_merge: reject mixed ir_version values
@@ -354,13 +354,13 @@ nodes:
     level: system_design
     kind: design_choice
     statement: >-
-      Version 2 is the sole supported wire contract. There is no version-1
-      compatibility, conversion, migration, or projection path. Unknown fields
+      Version 1 is the sole supported wire contract. No older RelayData wire
+      contract is accepted or converted. Unknown fields
       or values MUST NOT be silently downgraded because that erases semantics.
     attributes:
       version_field: ir_version
-      supported_version: 2
-      legacy_detection: reject missing or non-2 ir_version
+      supported_version: 1
+      legacy_detection: reject missing or non-1 ir_version
       migration: none
       downgrade: unsupported
   - id: DEC-GOLDEN-ACCEPTANCE
@@ -375,7 +375,7 @@ nodes:
       existing_layout: testdata/golden/{cases,environments,snapshots}
       terraform_snapshots:
         files: [plan.json, expected.json]
-        source_contract: fixed plan JSON to version-2 RelayData
+        source_contract: fixed plan JSON to version-1 RelayData
       transform_sink_goldens: independent of Terraform version matrix
       environment:
         terraform: exact pinned version
@@ -421,7 +421,7 @@ nodes:
     kind: design_choice
     statement: >-
       resource_changes is consulted only for post-apply values and masks needed
-      to form the snapshot. Actions and before values are excluded from version-2
+      to form the snapshot. Actions and before values are excluded from version-1
       RelayData. A future diff model must be designed separately and must not
       change the meaning of this snapshot contract.
     attributes:
@@ -526,11 +526,11 @@ observations:
         revision: 455ed318b7bc409d3e1da320620ef92d457042b9
         role: method-source
 open_items:
-  - id: OPEN-V2-PLUGIN-GATE
+  - id: OPEN-PLUGIN-VERSION-GATE
     statement: >-
       Select the concrete mechanism by which configured external Transform and
-      Sink plugins declare version-2 support before the Source begins emitting
-      version-2 RelayData. The rollout MUST fail closed until this decision is
+      Sink plugins declare version-1 support before the Source begins emitting
+      version-1 RelayData. The rollout MUST fail closed until this decision is
       implemented and every configured plugin is compatible.
     status: open
     related_refs: [DEC-COMPATIBILITY, DEC-STAGE-CONTRACTS]
@@ -554,7 +554,7 @@ representation_gaps:
     statement: >-
       Terraform show JSON encodes list, tuple, set, map, and object values as
       ordinary JSON arrays and objects and does not identify every Terraform
-      collection kind. Version 2 preserves the JSON shape and intentionally does
+      collection kind. Version 1 preserves the JSON shape and intentionally does
       not claim unavailable collection types.
     reason: target_contract_loss
     reason_detail: External plan JSON does not carry sufficient collection-kind identity for every value.
@@ -569,7 +569,7 @@ representation_gaps:
     statement: >-
       A planned known value generally does not identify whether its origin was
       explicit configuration, a provider default, provider normalization, or an
-      API default. Version 2 omits an origin field instead of guessing.
+      API default. Version 1 omits an origin field instead of guessing.
     reason: insufficient_evidence_model
     reason_detail: Configuration expressions and planned values do not establish provider or remote API provenance.
     affected_refs: [DEC-ORIGIN, REQ-LIMITATIONS]
@@ -588,7 +588,7 @@ extensions:
       implementation_boundary: >-
         The Source invokes terraform show -json. Explicit plan mode runs
         terraform plan -out=FILE each time before showing the plan. The JSON is decoded at the Source boundary and
-        normalized to RelayData ir_version 2 before it enters the existing
+        normalized to RelayData ir_version 1 before it enters the existing
         plugin pipeline.
       forbidden_operations:
         - apply
@@ -597,9 +597,9 @@ extensions:
         - backend repair or configuration
         - provider network access
     internal_ir:
-      ir_version: 2
+      ir_version: 1
       top_level:
-        ir_version: 2
+        ir_version: 1
         resources: Resource[]
       resource:
         retained_fields:
@@ -669,7 +669,7 @@ extensions:
         type: resource.type
         name: resource.name
         provider: resource.provider_name then matching resource change provider_name; omit when absent
-        mode: represented in canonical address qualification; do not add an independent mode field in v2
+        mode: represented in canonical address qualification; do not add an independent mode field in v1
       configuration:
         path: recursively walk configuration.root_module and child_modules resources[].expressions
         use: diagnostics only to show configured expressions
@@ -682,29 +682,29 @@ extensions:
       source:
         accepts: current state by default, statefile, existing planfile, or explicit -plan -planfile
         invokes: terraform show -json; decode its stdout as external JSON
-        emits: RelayData ir_version 2
+        emits: RelayData ir_version 1
         preserves: [unknown, known null, partial nested values, sensitivity, resource address, instance key]
         does_not_emit: [Terraform plan envelope, diff model, fabricated provenance]
       transform:
-        accepts: RelayData ir_version 2
-        emits: RelayData ir_version 2
+        accepts: RelayData ir_version 1
+        emits: RelayData ir_version 1
         preserves_per_instance: [address, index_key, Value.state, Value.value, Value.type, effective sensitivity]
         grouping: only merge resources with equal Provider values unless a per-instance provider representation is specified; retain each instance address and Value
       sink:
-        accepts: RelayData ir_version 2
+        accepts: RelayData ir_version 1
         sensitive_default: redact or omit effective sensitive values
         raw_sensitive_rendering: explicit declassification policy required
         unknown_rendering: distinguish from known null and missing attribute
     compatibility:
       breaking_change: attribute map values change from raw JSON to recursive Value records
       version_discriminator: ir_version
-      supported_version: 2 only
-      legacy_detection: reject missing or non-2 ir_version
+      supported_version: 1 only
+      legacy_detection: reject missing or non-1 ir_version
       migration: none
     acceptance:
-      source_unit: fixed plan.json to version-2 expected.json without Terraform
+      source_unit: fixed plan.json to version-1 expected.json without Terraform
       source_end_to_end: CLI state and plan modes through terraform show -json to RelayData
-      fixed_source_expected: version-2 expected.json for each environment and case
+      fixed_source_expected: version-1 expected.json for each environment and case
       transform_sink_contracts: Terraform-independent golden inputs and expected outputs
       semantic_json_compare:
         object_key_order: ignore
