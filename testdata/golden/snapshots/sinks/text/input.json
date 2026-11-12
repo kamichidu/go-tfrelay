@@ -1,11 +1,13 @@
 {
+  "ir_version": 2,
+  "snapshot_kind": "state",
   "resources": [
     {
       "__id__": "resource-id",
       "type": "terraform_data",
       "name": "fixture",
       "provider": "provider-a",
-      "instances": [{"attributes": {"input": "\"declared value\""}, "sensitive_attributes": null}]
+      "instances": [{"address":"terraform_data.fixture", "attributes": {"input": {"state":"known","type":"string","value":"declared value"}}, "sensitive_attributes": null}]
     }
   ]
 }

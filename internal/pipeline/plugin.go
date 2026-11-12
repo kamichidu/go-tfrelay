@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"os/exec"
@@ -43,7 +44,16 @@ func (p *Pipeline) mergeReader(r io.Reader, cfg config.RelayPluginConfig) io.Rea
 			pw.CloseWithError(err)
 			return
 		}
-
+		if y.IRVersion != 2 || (y.SnapshotKind != "planned" && y.SnapshotKind != "state") {
+			pw.CloseWithError(fmt.Errorf("source emitted unsupported RelayData contract: ir_version=%d snapshot_kind=%q", y.IRVersion, y.SnapshotKind))
+			return
+		}
+		if x.IRVersion == 0 {
+			x.IRVersion, x.SnapshotKind = y.IRVersion, y.SnapshotKind
+		} else if x.IRVersion != y.IRVersion || x.SnapshotKind != y.SnapshotKind {
+			pw.CloseWithError(fmt.Errorf("cannot merge sources with different RelayData contracts: ir_version=%d snapshot_kind=%q and ir_version=%d snapshot_kind=%q", x.IRVersion, x.SnapshotKind, y.IRVersion, y.SnapshotKind))
+			return
+		}
 		x.Resources = append(x.Resources, y.Resources...)
 		if err := encodeJSON(pw, &x); err != nil {
 			log.Printf("error: failed to write merged data: %v", err)

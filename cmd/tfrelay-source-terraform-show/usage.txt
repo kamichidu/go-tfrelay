@@ -1,0 +1,11 @@
+Usage:
+  tfrelay-source-terraform-show [options]
+
+With no input flags, shows the current Terraform state as JSON.
+  -statefile=FILE  Show a state file.
+  -planfile=FILE   Show an existing saved plan.
+  -plan -planfile=FILE [-- TERRAFORM_ARGS...]
+                   Create a plan at FILE and show its planned values.
+
+Terraform initialization, backend configuration, authentication, and workspace
+selection are external preconditions.

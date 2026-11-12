@@ -1,21 +1,27 @@
 {
+  "ir_version": 2,
+  "snapshot_kind": "planned",
   "resources": [
     {
       "__id__": "<generated>",
       "type": "terraform_data",
-      "name": "second/first",
+      "name": "second",
       "provider": "provider-b",
-      "instances": [
-        {"attributes": {"input": "\"two\""}, "sensitive_attributes": null},
-        {"attributes": {"input": "\"one\""}, "sensitive_attributes": null}
-      ]
+      "instances": [{"address":"terraform_data.second", "attributes": {"input": {"state":"known","type":"string","value":"two"}}, "sensitive_attributes": null}]
+    },
+    {
+      "__id__": "<generated>",
+      "type": "terraform_data",
+      "name": "first",
+      "provider": "provider-a",
+      "instances": [{"address":"terraform_data.first", "attributes": {"input": {"state":"known","type":"string","value":"one"}}, "sensitive_attributes": null}]
     },
     {
       "__id__": "<generated>",
       "type": "time_offset",
       "name": "fixed",
       "provider": "provider-time",
-      "instances": [{"attributes": {"offset_days": "1"}, "sensitive_attributes": null}]
+      "instances": [{"address":"time_offset.fixed", "attributes": {"offset_days": {"state":"known","type":"number","value":1}}, "sensitive_attributes": null}]
     }
   ]
 }

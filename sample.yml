@@ -3,9 +3,9 @@ timeout: 5m
 
 plugins:
   source:
-    # automatic terraform-plan execution
-    - command: tfrelay-source-planfile
-      args: [--, terraform, plan]
+    # Uses the selected Terraform workspace and backend configuration as-is.
+    - command: tfrelay-source-terraform-show
+      args: [-plan, -planfile=.terraform-relay.tfplan]
   transform:
     # grouping resources by resource.type
     - command: tfrelay-transform-groupby
