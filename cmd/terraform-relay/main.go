@@ -70,15 +70,6 @@ func run(stdout, stderr io.Writer, args []string) int {
 	colog.Register()
 	colog.SetOutput(stderr)
 	colog.SetPrefix("[ " + progName + " ] ")
-	if len(args) > 1 {
-		for _, arg := range args[1:] {
-			if arg == "-help" {
-				fmt.Fprintln(stderr, "Error: flag provided but not defined: -help")
-				fmt.Fprint(stderr, usageStr)
-				return 2
-			}
-		}
-	}
 	return flagshim.Run(context.Background(), os.Stdin, stdout, stderr, &usageCommand{}, args)
 }
 

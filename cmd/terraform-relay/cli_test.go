@@ -32,11 +32,6 @@ func TestCLIHelpFlags(t *testing.T) {
 		})
 	}
 
-	var stdout, stderr bytes.Buffer
-	code := run(&stdout, &stderr, []string{progName, "-help"})
-	if code != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "flag provided but not defined: -help") {
-		t.Fatalf("unsupported help spelling: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
 }
 
 func TestCLIExplicitConfigPath(t *testing.T) {
