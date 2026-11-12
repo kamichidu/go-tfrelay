@@ -1,0 +1,750 @@
+contract_version: 1alpha1
+schema_ref:
+  revision: 455ed318b7bc409d3e1da320620ef92d457042b9
+  sha256: 9b109dbc7ac09b32d3dbe2e233eed7da1378bc912d0e84c479c3ed0bed9f7103
+model:
+  id: tfrelay-source-show-json
+  title: Terraform show JSON Source migration
+  description: >-
+    Authoritative semantic design for replacing tfrelay's private binary plan
+    decoding with Terraform's public show -json representation while preserving
+    the Source to Transform to Sink architecture. This document is a proposed
+    design contract and does not describe an implemented change.
+  domain: Terraform plan snapshot Source
+  profile: source-snapshot-ir-v2
+nodes:
+  - id: REQ-SNAPSHOT
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      The primary Source output MUST be a snapshot of the resource configuration
+      Terraform plans to exist after applying the plan. It is planned post-apply
+      state, not a claim that apply ran or that remote state was observed.
+    attributes:
+      norm: MUST
+      scope: resource snapshot
+  - id: REQ-EXTERNAL-JSON
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      Terraform show -json data MUST remain an external Source input format. It
+      MUST be normalized into tfrelay's own internal representation and MUST NOT
+      become the internal IR or be passed through the Transform and Sink stages
+      as Terraform's plan document.
+    attributes:
+      norm: MUST
+      scope: Source boundary
+  - id: REQ-PIPELINE
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      The Source to Transform to Sink architecture MUST remain the processing
+      path. The design MUST retain the existing Resource and Instance concepts
+      where feasible and MUST define each stage's contract for the new value
+      representation.
+    attributes:
+      norm: MUST
+      scope: pipeline architecture
+  - id: REQ-NO-INVENTION
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      The Source MUST emit only information supported by the Terraform plan and
+      MUST NOT invent an attribute value, Terraform type, provider, address, or
+      value origin when the input does not establish it. Missing, known null,
+      and unknown values MUST remain distinguishable.
+    attributes:
+      norm: MUST
+      scope: semantic fidelity
+  - id: REQ-LIMITATIONS
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      Information Terraform's JSON cannot establish MUST remain absent or be
+      reported as an explicit limitation. In particular, the Source MUST NOT
+      claim whether an effective value came from explicit configuration, a
+      provider default, provider normalization, or a remote API default unless
+      the input proves that origin.
+    attributes:
+      norm: MUST
+      scope: provenance
+  - id: REQ-SENSITIVE
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      The Source MUST preserve Terraform's after_sensitive information as
+      recursive sensitivity metadata. Transform stages MUST preserve that
+      metadata. Sink stages MUST NOT expose a sensitive value by default.
+    attributes:
+      norm: MUST
+      scope: sensitive values
+  - id: REQ-DIFF-DEFERRED
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      A change or diff representation is a secondary future concern. This
+      snapshot design MUST NOT add action, before/after, replacement, or other
+      diff fields to the snapshot IR merely to preserve plan changes.
+    attributes:
+      norm: MUST
+      scope: change model
+  - id: DEC-IR-VERSION
+    level: system_design
+    kind: design_choice
+    statement: >-
+      The normalized contract uses IR version 2. The top-level resources array
+      remains, with an explicit ir_version discriminator because recursive
+      Value objects are incompatible with legacy raw JSON attribute values.
+      Terraform format_version and terraform_version remain input metadata and
+      are not copied into the internal IR.
+    attributes:
+      choice: ir_version 2
+      compatibility_reason: attribute value representation is breaking
+  - id: DEC-VALUE
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Each resource attribute is a recursive Value. Every Value has required
+      state known or unknown, optional type, optional sensitive defaulting to
+      false, and value exactly when state is known. A known null has value null;
+      an unknown Value has no value member. Known object and array containers
+      hold child Values, allowing a known parent with unknown descendants.
+    attributes:
+      choice: recursive Value
+      value_shape:
+        required_fields:
+          - state
+        optional_fields:
+          - type
+          - sensitive
+          - value
+        state_values:
+          - known
+          - unknown
+        invariants:
+          - known requires value, even when value is JSON null
+          - unknown forbids value
+          - object value maps property names to child Values
+          - array value contains child Values in input order
+        examples:
+          known_null: {state: known, type: "null", value: null}
+          unknown: {state: unknown}
+          partially_unknown_object:
+            state: known
+            type: object
+            value:
+              configured:
+                state: known
+                type: string
+                value: retained
+              computed:
+                state: unknown
+          partially_unknown_array:
+            state: known
+            type: array
+            value:
+              - {state: known, type: number, value: 1}
+              - {state: unknown}
+  - id: DEC-TYPE
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Value.type is optional and describes only a JSON-native kind established
+      by the input: null, boolean, number, string, object, or array. Unknown
+      Values MUST omit type. The Source MUST NOT infer a type from an unknown
+      placeholder, a sibling value, a name, or a guessed Terraform type. The
+      type null identifies JSON null only; it does not claim Terraform's
+      declared static type for that null.
+    attributes:
+      choice: optional JSON-native type only
+      known_type_values: ["null", boolean, number, string, object, array]
+      unknown_type: omitted
+      provider_schema_input: out of scope
+  - id: DEC-NUMBER
+    level: system_design
+    kind: design_choice
+    statement: >-
+      JSON numbers MUST retain their exact decimal value and MUST NOT pass
+      through binary floating-point conversion. Number formatting may be
+      canonicalized only if numeric equality and precision are preserved.
+    attributes:
+      choice: arbitrary-precision JSON number
+      forbidden_conversion: IEEE-754 binary float
+  - id: DEC-COLLECTION
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Terraform show JSON does not reliably distinguish a Terraform list from a
+      tuple, a map from an object, or a set from an array in the value encoding.
+      The Source MUST preserve JSON object and array structure without claiming
+      an unavailable Terraform collection type. Array order MUST be preserved;
+      the Source MUST NOT sort values on the assumption that an array is a set.
+    attributes:
+      mapping:
+        object: object of child Values
+        array: array of child Values in emitted order
+        list_tuple_set: unresolved by show JSON alone
+        map_object: unresolved by show JSON alone
+      normalization: no collection reordering
+  - id: DEC-PLAN-MAPPING
+    level: system_design
+    kind: design_choice
+    statement: >-
+      planned_values is the sole source of post-apply resource membership,
+      addresses, and emitted known values. The Source recursively walks
+      root_module.resources and child_modules; resources absent there are never
+      restored from resource_changes or prior_state. resource_changes is joined
+      to planned instances by exact current instance address and contributes
+      only after_unknown and after_sensitive masks. change.after is not a value
+      fallback. This retains no-op instances present in planned_values and
+      excludes deleted instances absent from it.
+    attributes:
+      primary_values: planned_values.root_module
+      recursive_module_path: child_modules
+      instance_masks:
+        unknown: resource_changes[].change.after_unknown
+        sensitive: resource_changes[].change.after_sensitive
+      secondary_sensitive_mask: planned_values resource sensitive_values
+      values_fallback: forbidden; change.after never supplies snapshot values or membership
+      missing_mask: retain planned known/null value; do not infer unknown from mask absence
+      deleted_resource: omit when absent from planned_values
+      prior_state: unused
+      output_changes: excluded from Resource snapshot
+      proposed_unknown: not consumed; it does not affect values, membership, masks, or validation
+    provenance:
+      origin: derived
+      artifact_refs:
+        - uri: https://developer.hashicorp.com/terraform/internals/json-format
+          role: Terraform plan JSON format and forward-compatibility contract
+  - id: DEC-MASKS
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Unknown and sensitive masks are applied recursively by path to the
+      planned_values tree. Matching resource_changes.change.after_unknown and
+      change.after_sensitive and planned_values resource.sensitive_values
+      supplement information that planned_values.values omits or represents as
+      null. A true unknown mask marks its path unknown, including a known-null
+      placeholder; false or absent mask paths do not erase known planned values.
+      A true sensitive mask marks its path sensitive. Effective sensitivity is
+      inherited by descendants, while a sensitive child does not mark siblings.
+      Masks are partial metadata: structural differences, absent paths, and
+      known nulls do not by themselves make the plan invalid. Do not substitute
+      change.after or consume proposed_unknown.
+    attributes:
+      mask_merge:
+        unknown: true wins over a value or null placeholder
+        sensitive: logical OR of planned_values.sensitive_values and after_sensitive
+        missing_mask_path: no additional information; retain planned value as represented
+        differing_mask_shape: merge matching paths; ignore absent paths without rejecting the plan
+        known_null: remains known unless a true unknown mask marks that path
+        proposed_unknown: not consumed; it does not affect values, membership, masks, or validation
+      effective_sensitive: parent_effective OR local_sensitive
+      known_null: remains known unless unknown mask marks its path
+      partial_masks: merge matching paths; absent paths and differing shapes add no information and do not alone reject input
+      proposed_unknown_role: not consumed for values, membership, masks, or validation
+  - id: DEC-RESOURCE-ADDRESS
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Resource.Type and Resource.Name retain their current roles as Terraform
+      type and local name. Instance.Address is added as the exact absolute
+      Terraform instance address. Instance.IndexKey remains a string but, in
+      version 2, carries the canonical JSON scalar token from the plan's index
+      field so a number and a quoted string remain distinct. A singleton omits
+      index_key. Source groups instances by resource block within each module
+      instance; Transform may regroup resources because every Instance retains
+      its own absolute address.
+    attributes:
+      instance_address: exact absolute address from the Terraform resource value object
+      instance_index_key: canonical JSON scalar token, omitted for singleton
+      index_source: resource.index from planned_values; omit when absent
+      address_missing: fail instead of synthesizing an address
+      address_qualifiers: [module path, module instance keys, data-source prefix, resource instance key]
+      source_grouping_key: containing module-instance address plus mode, type, and local name
+      ordering: Source resources by source grouping key; Source instances by exact address; Transform resource order is not semantic
+      local_name: retain Terraform resource local name
+      resource_id: retain as opaque tfrelay correlation identifier, never as Terraform address
+  - id: DEC-PROVIDER
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Resource.Provider is populated only from planned_values.provider_name or
+      the matching resource change provider_name. The value is Terraform's
+      provider source address, not a provider configuration alias. If Terraform
+      omits it, the field is omitted; the Source MUST NOT use a placeholder.
+    attributes:
+      source_paths:
+        - planned_values resource provider_name
+        - resource_changes[].provider_name
+      precedence: planned_values value, then matching resource change value
+      missing: omit
+      placeholder: forbidden
+  - id: DEC-ORIGIN
+    level: system_design
+    kind: design_choice
+    statement: >-
+      The snapshot IR has no value-origin field. configuration resource
+      expressions may be used for diagnostics that an expression was configured,
+      but MUST NOT supply resource values or establish the origin of an effective
+      value. A known planned value may reflect explicit configuration, a provider
+      default, provider normalization, or an API default; show JSON does not
+      generally distinguish these origins.
+    attributes:
+      configuration_path: recursively walk configuration.root_module and child_modules resources[].expressions
+      allowed_use: diagnostic evidence of configured expressions only
+      observed_example: random_password.defaulted.upper is omitted from HCL while the plan shows true; this does not establish whether the effective value came from a provider default or another provider behavior
+      forbidden_use:
+        - synthesize missing planned values
+        - classify a resulting value as provider or API default
+      origin_field: omitted
+  - id: DEC-UNSUPPORTED-PLAN
+    level: system_design
+    kind: design_choice
+    statement: >-
+      The Source fails without emitting partial RelayData when the plan has an
+      unsupported major format_version, errored is true, complete is false, or
+      deferred_changes is non-empty. An applyable value of false alone is not a
+      failure condition. Ordinary unknown attributes are supported and are not
+      equivalent to a deferred plan. Additive minor format versions are accepted
+      and unrecognized fields are ignored, as required by Terraform's format
+      version contract.
+    attributes:
+      fail_conditions:
+        - unsupported format_version major
+        - errored true
+        - complete false
+        - deferred_changes non-empty
+      applyable_false: accepted
+      error_behavior: explicit error, no partial output
+  - id: DEC-STAGE-CONTRACTS
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Source keeps its saved-plan path input and invokes terraform show -json.
+      It converts the command's external JSON to version-2 RelayData and never
+      forwards Terraform's plan document. Transform consumes and emits the
+      same RelayData version, preserving Value state, exact known values,
+      per-instance addresses, indices, and sensitivity through grouping or other changes.
+      A Transform MUST NOT merge Resources with different Provider values into
+      one resource-level Provider field; it must keep them separate or use a
+      separately specified per-instance provider representation.
+      Sink consumes versioned RelayData; sensitive values are redacted or
+      omitted unless a separately explicit declassification policy applies.
+    attributes:
+      source:
+        input_boundary: saved-plan path; invoke terraform show -json locally
+        output: RelayData ir_version 2
+        side_effects: no init, plan, apply, refresh, or provider network calls
+        logs: no plan values or sensitive values
+        multi_source_merge: reject mixed ir_version values
+      transform:
+        input_output: same ir_version
+        preserve: [known_unknown_state, known_null, recursive_structure, address, index_key, sensitivity]
+        provider_grouping: never combine differing Provider values into one resource-level provider field
+        merge: retain per-instance values and address identity; do not collapse differing resource-level provider values
+      sink:
+        input: versioned RelayData
+        sensitive_default: redact or omit
+        raw_sensitive_output: requires explicit declassification policy
+  - id: DEC-COMPATIBILITY
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Version 2 is not wire-compatible with legacy raw attribute JSON. Migration
+      MUST be staged: readers and plugins first gain explicit version-1 and
+      version-2 handling; version-2-capable Transform and Sink plugins are
+      verified; then the Source is enabled for version 2. Unknown fields or
+      version-2 Values MUST NOT be silently downgraded to version 1 because that
+      would erase unknown and sensitivity semantics. Legacy templates continue
+      to operate only through an explicit version-1 projection.
+    attributes:
+      version_field: ir_version
+      versions:
+        1: legacy raw JSON attributes and sensitive_attributes path mask
+        2: recursive Value attributes and per-value sensitivity
+      legacy_detection: missing ir_version means version 1
+      upgrade_v1_to_v2:
+        raw_value: wrap as state known without changing the JSON value
+        null: wrap as state known with value null
+        missing_attribute: keep absent; never infer unknown
+        sensitive_attributes: map its explicit paths to recursive sensitive flags
+        unrecoverable: unknown values and full Terraform addresses omitted by version 1 cannot be reconstructed
+      downgrade_v2_to_v1:
+        default: fail when unknown, nested state, Terraform address, or sensitivity cannot be represented
+        allowed_loss: only through an explicit configured projection that reports the loss
+      rollout:
+        - add dual-version decoding and version-preserving Transform/Sink support
+        - validate all configured plugins against version 2
+        - enable Source version 2 only after plugin compatibility is established
+      downgrade: explicit lossy projection only, never implicit
+  - id: DEC-GOLDEN-ACCEPTANCE
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Acceptance uses the independent Source, Transform, and Sink Golden Set
+      contracts. Terraform input snapshots are generated with the pinned
+      Terraform and provider environment, and drift is detected in CI. Golden
+      updates remain explicit reviewed operations; CI does not rewrite them.
+    attributes:
+      existing_layout: testdata/golden/{cases,environments,snapshots}
+      terraform_snapshots:
+        files: [plan.json, expected.json]
+        source_contract: fixed plan JSON to version-2 RelayData
+      transform_sink_goldens: independent of Terraform version matrix
+      environment:
+        terraform: exact pinned version
+        providers: exact versions and committed lockfile
+        init: terraform init -lockfile=readonly
+      compare:
+        objects: semantic key-order-independent comparison
+        plan_timestamp: normalize only explicitly documented nondeterministic field
+        unknown_sensitive_configuration: preserve and compare
+      updates: explicit command only; never in CI
+  - id: IMPL-CURRENT-CONTRACT
+    level: implementation
+    kind: inspected_implementation
+    statement: >-
+      At the reviewed baseline, RelayData contains resources; Resource contains
+      __id__, type, name, provider, and instances; Instance contains optional
+      index_key, raw JSON attributes, and sensitive_attributes. The planfile
+      Source reads binary plan data, applies create/update/delete changes to
+      state, omits not-wholly-known values, and does not expose complete
+      addresses or action metadata. Pipeline stages decode and encode RelayData;
+      group-by merges by resource type; the text Sink renders raw attribute JSON.
+    artifact_refs:
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/types.go
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: current-ir
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/cmd/tfrelay-source-planfile/main.go
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: current-source
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/cmd/tfrelay-source-planfile/tfstate.go
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: current-plan-mapping
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/internal/pipeline/pipeline.go
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: current-pipeline
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/cmd/tfrelay-transform-groupby/main.go
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: current-transform
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/cmd/tfrelay-sink-text/main.go
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: current-sink
+  - id: DEC-CHANGE-BOUNDARY
+    level: system_design
+    kind: design_choice
+    statement: >-
+      resource_changes is consulted only for post-apply values and masks needed
+      to form the snapshot. Actions and before values are excluded from version-2
+      RelayData. A future diff model must be designed separately and must not
+      change the meaning of this snapshot contract.
+    attributes:
+      allowed_change_data: [after_unknown, after_sensitive]
+      excluded_change_data: [actions, before, before_sensitive, replacement_order]
+  - id: IMPL-GOLDEN-BASELINE
+    level: implementation
+    kind: inspected_test_contract
+    statement: >-
+      The reviewed Golden Set defines cases, pinned Terraform/provider
+      environments, and snapshots. It includes plan.json and expected.json per
+      Terraform case, binary planfile fixtures for the current Source, and
+      Terraform-independent Transform and Sink goldens. CI has an explicit
+      read-only check command and an explicit update command.
+    artifact_refs:
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/docs/golden-set.md
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: golden-policy
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/.github/workflows/golden.yml
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: golden-ci
+  - id: IMPL-DESIGN-IR-METHOD
+    level: implementation
+    kind: design_authoring_method
+    statement: >-
+      This contract uses Design IR v1alpha1's nodes, typed relations,
+      observations, open items, representation gaps, provenance, and namespaced
+      domain extension. The Design IR reference CLI validates this YAML. The
+      inspected Design IR repository provides no document generation command;
+      therefore this YAML is the sole authoritative source and no competing
+      manually maintained rendered specification is published.
+    artifact_refs:
+      - uri: https://github.com/kamichidu/design-ir/tree/455ed318b7bc409d3e1da320620ef92d457042b9
+        revision: 455ed318b7bc409d3e1da320620ef92d457042b9
+        role: design-ir-methodology
+  - id: DEC-PROJECTED-MEMO
+    level: system_design
+    kind: design_choice
+    statement: >-
+      The earlier prose-only show-json design memo is superseded by this
+      Design-IR source. It is removed so there is one authoritative design
+      rather than competing descriptions.
+    attributes:
+      superseded_artifact: docs/show-json-design.md
+      canonical_artifact: design-ir/source-show-json.yaml
+relations:
+  - id: REL-VALUE-REQ
+    from: DEC-VALUE
+    type: satisfies
+    to: REQ-NO-INVENTION
+  - id: REL-MAPPING-REQ
+    from: DEC-PLAN-MAPPING
+    type: satisfies
+    to: REQ-SNAPSHOT
+  - id: REL-EXTERNAL-REQ
+    from: DEC-STAGE-CONTRACTS
+    type: satisfies
+    to: REQ-EXTERNAL-JSON
+  - id: REL-STAGE-REQ
+    from: DEC-STAGE-CONTRACTS
+    type: satisfies
+    to: REQ-PIPELINE
+  - id: REL-SENSITIVE-REQ
+    from: DEC-MASKS
+    type: satisfies
+    to: REQ-SENSITIVE
+  - id: REL-LIMITS-REQ
+    from: DEC-ORIGIN
+    type: satisfies
+    to: REQ-LIMITATIONS
+  - id: REL-CHANGE-REQ
+    from: DEC-CHANGE-BOUNDARY
+    type: satisfies
+    to: REQ-DIFF-DEFERRED
+  - id: REL-COMPAT-REQ
+    from: DEC-COMPATIBILITY
+    type: satisfies
+    to: REQ-PIPELINE
+observations:
+  - id: OBS-CODE-REVIEW
+    subject: IMPL-CURRENT-CONTRACT
+    activity: Inspected the IR, binary plan Source, pipeline, Transform, and Sink at the PR #2 head.
+    claims: [DEC-RESOURCE-ADDRESS, DEC-STAGE-CONTRACTS, DEC-COMPATIBILITY]
+    artifact_refs:
+      - uri: https://github.com/kamichidu/go-tfrelay/commit/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: reviewed-baseline
+  - id: OBS-GOLDEN-REVIEW
+    subject: IMPL-GOLDEN-BASELINE
+    activity: Inspected the pinned Terraform/provider fixtures, snapshots, comparator, and Golden Set workflow.
+    claims: [DEC-GOLDEN-ACCEPTANCE]
+    artifact_refs:
+      - uri: https://github.com/kamichidu/go-tfrelay/tree/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/testdata/golden
+        revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+        role: golden-fixtures
+  - id: OBS-DESIGN-IR-REVIEW
+    subject: IMPL-DESIGN-IR-METHOD
+    activity: Inspected Design IR policy, schema, examples, validator, CLI, and test suite.
+    claims: [DEC-PROJECTED-MEMO]
+    artifact_refs:
+      - uri: https://github.com/kamichidu/design-ir/tree/455ed318b7bc409d3e1da320620ef92d457042b9
+        revision: 455ed318b7bc409d3e1da320620ef92d457042b9
+        role: method-source
+open_items:
+  - id: OPEN-V2-PLUGIN-GATE
+    statement: >-
+      Select the concrete mechanism by which configured external Transform and
+      Sink plugins declare version-2 support before the Source begins emitting
+      version-2 RelayData. The rollout MUST fail closed until this decision is
+      implemented and every configured plugin is compatible.
+    status: open
+    related_refs: [DEC-COMPATIBILITY, DEC-STAGE-CONTRACTS]
+  - id: OPEN-COLLECTION-COMPARISON
+    statement: >-
+      Decide whether a future schema-aware golden comparator should canonicalize
+      Terraform sets. The current JSON-only comparator preserves array order
+      because show JSON alone does not identify set values.
+    status: deferred
+    related_refs: [DEC-COLLECTION, DEC-GOLDEN-ACCEPTANCE]
+  - id: OPEN-SENSITIVE-DECLASSIFICATION
+    statement: >-
+      Decide whether any configured Sink may explicitly declassify and render a
+      sensitive Value, and if so define the authorization, audit, and review
+      controls. Until this is resolved, Sink output redacts or omits sensitive
+      values.
+    status: open
+    related_refs: [REQ-SENSITIVE, DEC-STAGE-CONTRACTS]
+representation_gaps:
+  - id: GAP-COLLECTION-KIND
+    statement: >-
+      Terraform show JSON encodes list, tuple, set, map, and object values as
+      ordinary JSON arrays and objects and does not identify every Terraform
+      collection kind. Version 2 preserves the JSON shape and intentionally does
+      not claim unavailable collection types.
+    reason: target_contract_loss
+    reason_detail: External plan JSON does not carry sufficient collection-kind identity for every value.
+    affected_refs: [DEC-COLLECTION]
+    status: unresolved
+    provenance:
+      origin: observed
+      artifact_refs:
+        - uri: https://github.com/hashicorp/terraform/blob/main/website/docs/internals/json-format.mdx
+          role: terraform-plan-json-format
+  - id: GAP-VALUE-ORIGIN
+    statement: >-
+      A planned known value generally does not identify whether its origin was
+      explicit configuration, a provider default, provider normalization, or an
+      API default. Version 2 omits an origin field instead of guessing.
+    reason: insufficient_evidence_model
+    reason_detail: Configuration expressions and planned values do not establish provider or remote API provenance.
+    affected_refs: [DEC-ORIGIN, REQ-LIMITATIONS]
+    status: unresolved
+    provenance:
+      origin: observed
+      artifact_refs:
+        - uri: https://github.com/kamichidu/go-tfrelay/blob/b2681c20e8be02beb5f7f0336ef51bacecd1fd2d/testdata/golden/snapshots/terraform-1.17.1/create/plan.json
+          revision: b2681c20e8be02beb5f7f0336ef51bacecd1fd2d
+          role: observed-plan-json
+extensions:
+  "github.com/kamichidu/go-tfrelay/source-show-json":
+    document_status: proposed_design
+    source_boundary:
+      input: saved-plan path; invoke terraform show -json locally
+      implementation_boundary: >-
+        The Source retains its saved-plan path input and invokes terraform show
+        -json. The command's JSON is decoded at the Source boundary and
+        normalized to RelayData ir_version 2 before it enters the existing
+        plugin pipeline.
+      no_terraform_side_effects:
+        - init
+        - plan
+        - apply
+        - refresh
+        - provider network access
+    internal_ir:
+      ir_version: 2
+      top_level:
+        ir_version: 2
+        resources: Resource[]
+      resource:
+        retained_fields:
+          __id__: opaque tfrelay correlation identifier; not a Terraform address
+          type: Terraform resource type
+          name: local Terraform name
+          provider: optional Terraform provider source address
+          instances: Instance[]
+      instance:
+        retained_fields:
+          index_key: optional canonical JSON scalar token in a string; absent for singleton
+          attributes: map from attribute name to recursive Value
+        added_fields:
+          address: required for Terraform plan Source; exact absolute Terraform instance address including module and resource index qualifiers
+        legacy_fields:
+          sensitive_attributes: accepted only while decoding version 1; replaced by Value.sensitive in version 2
+      value:
+        state: required enum known|unknown
+        type: optional JSON-native kind only; allowed values ["null", boolean, number, string, object, array]
+        sensitive: optional boolean, default false
+        value:
+          required_when: state is known
+          forbidden_when: state is unknown
+          known_null: state known and value null
+          object: map of property names to child Value records
+          array: ordered sequence of child Value records
+        semantics:
+          missing_attribute: no member in attributes map
+          known_null: attribute exists, state known, value null
+          unknown: attribute exists, state unknown, no value member
+          known_parent_unknown_child: known container Value whose child Value is unknown
+          sensitive_inheritance: effective sensitive is true if this or any ancestor is sensitive
+          unknown_type: omit type; never infer from a placeholder
+          number_precision: preserve exact JSON decimal token without float conversion
+          terraform_collection_kind: do not infer list/map/set from JSON shape
+          arrays: preserve emitted order
+    terraform_input_mapping:
+      plan_status:
+        format_version: reject unsupported major version; accept additive minor versions and ignore unknown members
+        resource_changes: may include no-op resources; planned_values alone defines snapshot membership
+        errored_true: reject with no partial output
+        complete_false: explicitly reject as incomplete
+        deferred_changes_nonempty: reject as unsupported/deferred
+        applyable_false: do not reject for this condition alone
+      resource_walk:
+        primary: planned_values.root_module.resources
+        nested: recursively walk child_modules.resources
+        unknown_values: fields may be omitted or null; matching after_unknown can identify unknown paths
+        address: require the exact absolute resource address from the resource value object
+        output_changes: exclude because RelayData models resources, not outputs
+      attributes:
+        primary_values: resource.values
+        fallback: forbidden; change.after is never substituted for planned_values values
+        unknown_mask: resource_changes[].change.after_unknown joined by exact instance address and recursively applied
+        sensitive_masks:
+          - resource.sensitive_values
+          - resource_changes[].change.after_sensitive
+        mask_merge: recursively apply matching true paths; absent or differently shaped paths add no information and do not alone reject input
+        proposed_unknown: not consumed for values, membership, masks, or validation
+      resource_identity:
+        instance_address_source: resource.address from planned_values only
+        index_source: resource.index from planned_values; encode the original string or number as a canonical JSON scalar token
+        moved_resource: use the new planned address; previous_address is not snapshot identity
+        group_resources: same containing module-instance path plus mode, type, and local name
+        split_instances: retain per-instance address and index_key
+        type: resource.type
+        name: resource.name
+        provider: resource.provider_name then matching resource change provider_name; omit when absent
+        mode: represented in canonical address qualification; do not add an independent mode field in v2
+      configuration:
+        path: recursively walk configuration.root_module and child_modules resources[].expressions
+        use: diagnostics only to show configured expressions
+        do_not_use: [fill missing planned values, assign value origin, infer provider or API defaults]
+      changes:
+        used: [after_unknown, after_sensitive]
+        not_emitted: [actions, before, before_sensitive, replacement order]
+        deleted_instance: exclude when absent from planned_values, regardless of change.after
+    pipeline_contract:
+      source:
+        accepts: saved planfile path
+        invokes: terraform show -json; decode its stdout as external JSON
+        emits: RelayData ir_version 2
+        preserves: [unknown, known null, partial nested values, sensitivity, resource address, instance key]
+        does_not_emit: [Terraform plan envelope, diff model, fabricated provenance]
+      transform:
+        accepts: RelayData ir_version 2
+        emits: RelayData ir_version 2
+        preserves_per_instance: [address, index_key, Value.state, Value.value, Value.type, effective sensitivity]
+        grouping: only merge resources with equal Provider values unless a per-instance provider representation is specified; retain each instance address and Value
+      sink:
+        accepts: RelayData ir_version 2
+        sensitive_default: redact or omit effective sensitive values
+        raw_sensitive_rendering: explicit declassification policy required
+        unknown_rendering: distinguish from known null and missing attribute
+    compatibility:
+      breaking_change: attribute map values change from raw JSON to recursive Value records
+      version_discriminator: ir_version
+      version_1: raw JSON attributes and sensitive_attributes path mask
+      version_2: recursive Value attributes and per-value sensitivity
+      legacy_detection: missing ir_version means version 1
+      upgrade_v1_to_v2:
+        raw_value: wrap as known
+        null: wrap as known null
+        missing_attribute: remain absent; do not infer unknown
+        sensitive_attributes: map valid legacy mask paths to Value.sensitive; fail on unsupported mask structure
+        limitation: lost unknown values and Terraform addresses cannot be restored
+    acceptance:
+      source_unit: fixed plan.json to version-2 expected.json without Terraform
+      source_end_to_end: saved planfile path through terraform show -json to expected.json
+      fixed_source_expected: version-2 expected.json for each environment and case
+      transform_sink_contracts: Terraform-independent golden inputs and expected outputs
+      semantic_json_compare:
+        object_key_order: ignore
+        number_precision: exact
+        normalization: only documented nondeterministic fields
+        preserve: [configuration, unknown, sensitive, defaults, null, action details in plan.json]
+      fixture_coverage:
+        - explicit configured values
+        - provider default visible in planned values with no inferred origin
+        - partially unknown object and array descendants
+        - sensitive known and unknown values
+        - known null distinct from absent and unknown
+        - count and for_each instance addresses including numeric and string index keys
+        - imported prior state producing an update plan
+        - nested module resources and data resources
+        - version-1 legacy input conversion and explicit version-2 downgrade rejection/loss reporting
+      ci:
+        terraform: exact version per environment
+        providers: exact pinned constraints with committed lockfile
+        init: terraform init -lockfile=readonly
+        commands: [terraform plan -out, terraform show -json]
+        result: compare regenerated plan.json and Source expected.json; fail on drift
+        golden_updates: explicit reviewed command only, never CI
