@@ -325,6 +325,29 @@ func mergeMaskObjects(a, b jsonValue) (jsonValue, error) {
 	if a.kind == "boolean" && b.kind == "boolean" {
 		return falseMask(), nil
 	}
+	if a.kind == "array" && b.kind == "array" {
+		n := len(a.arr)
+		if len(b.arr) > n {
+			n = len(b.arr)
+		}
+		out := jsonValue{kind: "array", arr: make([]jsonValue, n)}
+		for i := 0; i < n; i++ {
+			if i >= len(a.arr) {
+				out.arr[i] = b.arr[i]
+				continue
+			}
+			if i >= len(b.arr) {
+				out.arr[i] = a.arr[i]
+				continue
+			}
+			merged, err := mergeMaskObjects(a.arr[i], b.arr[i])
+			if err != nil {
+				return out, err
+			}
+			out.arr[i] = merged
+		}
+		return out, nil
+	}
 	if a.kind != "object" || b.kind != "object" {
 		// Masks are partial metadata. A shape mismatch contributes no
 		// information unless one side marks the whole path sensitive.

@@ -3,6 +3,8 @@ package showjson
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -65,6 +67,82 @@ func TestDecodeSnapshotSensitiveMaskShapeMerges(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMergeSensitiveArrayMasks(t *testing.T) {
+	tests := []struct {
+		name, planned, after, want string
+	}{
+		{"array conflict", `[true,false]`, `[false,true]`, `[true,true]`},
+		{"reverse array conflict", `[false,true]`, `[true,false]`, `[true,true]`},
+		{"nested arrays and objects", `[{"items":[true,false]},[false,{"leaf":true}]]`, `[{"items":[false,true]},[true,{"leaf":false}]]`, `[{"items":[true,true]},[true,{"leaf":true}]]`},
+		{"uneven lengths", `[false,true]`, `[true,false,true]`, `[true,true,true]`},
+		{"parent true dominates", `true`, `[{"leaf":false}]`, `true`},
+		{"shape mismatch keeps true", `[{"leaf":true}]`, `[true]`, `[true]`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := mergeMaskObjects(mustParseValue(t, tc.planned), mustParseValue(t, tc.after))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if maskString(got) != tc.want {
+				t.Fatalf("merged mask = %s, want %s", maskString(got), tc.want)
+			}
+		})
+	}
+}
+
+func TestDecodeSnapshotSensitiveArrayMaskUnionRedactsSource(t *testing.T) {
+	input := []byte(`{"planned_values":{"root_module":{"resources":[{"address":"test_item.one","type":"test_item","name":"one","values":{"items":["left-secret","right-secret"],"public":"visible"},"sensitive_values":{"items":[true,false]}}]}},"resource_changes":[{"address":"test_item.one","change":{"after_sensitive":{"items":[false,true]}}}]}`)
+	got, err := DecodeSnapshot(input, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := got.Resources[0].Instances[0].Attributes["items"]
+	var values []struct {
+		Sensitive bool   `json:"Sensitive"`
+		Value     string `json:"Value"`
+	}
+	if err := json.Unmarshal(items.Value, &values); err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 2 || !values[0].Sensitive || !values[1].Sensitive {
+		t.Fatalf("array sensitivity union = %+v, want both elements sensitive", values)
+	}
+	if string(items.Value) == "" || got.Resources[0].Instances[0].Attributes["public"].Sensitive {
+		t.Fatal("redaction union changed unrelated sibling")
+	}
+}
+
+func maskString(v jsonValue) string {
+	if v.kind == "array" {
+		parts := make([]string, len(v.arr))
+		for i, child := range v.arr {
+			parts[i] = maskString(child)
+		}
+		return "[" + strings.Join(parts, ",") + "]"
+	}
+	if v.kind == "object" {
+		keys := make([]string, 0, len(v.obj))
+		for key := range v.obj {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		parts := make([]string, len(keys))
+		for i, key := range keys {
+			encoded, _ := json.Marshal(key)
+			parts[i] = string(encoded) + ":" + maskString(v.obj[key])
+		}
+		return "{" + strings.Join(parts, ",") + "}"
+	}
+	if v.kind == "boolean" {
+		if maskTrue(v) {
+			return "true"
+		}
+		return "false"
+	}
+	return "null"
 }
 
 func TestDecodeSnapshotOrdersResourcesAndInstances(t *testing.T) {
