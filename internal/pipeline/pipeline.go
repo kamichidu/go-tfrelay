@@ -55,8 +55,8 @@ func (p *Pipeline) Do(ctx context.Context) error {
 		return err
 	}
 	select {
-	case <-sinkDone:
-		return nil
+	case err := <-sinkDone:
+		return err
 	case <-ctx.Done():
 		return ctx.Err()
 	}
