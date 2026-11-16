@@ -93,6 +93,60 @@ func TestMergeSensitiveArrayMasks(t *testing.T) {
 	}
 }
 
+func TestMergeSensitiveMaskShapeConflicts(t *testing.T) {
+	tests := []struct {
+		name, planned, after, want string
+	}{
+		{"object with array", `{"child":false}`, `[false]`, `true`},
+		{"array with object", `[false]`, `{"child":false}`, `true`},
+		{"nested object with array", `{"outer":{"child":{"leaf":false},"sibling":false}}`, `{"outer":{"child":[false],"sibling":false}}`, `{"outer":{"child":true,"sibling":false}}`},
+		{"false with container", `false`, `{"child":true}`, `{"child":true}`},
+		{"parent true and sibling isolation", `{"parent":true,"sibling":false}`, `{"parent":{"child":false},"sibling":false}`, `{"parent":true,"sibling":false}`},
+		{"missing side retains object", `{"child":true}`, `null`, `{"child":true}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := mergeMaskObjects(mustParseValue(t, tc.planned), mustParseValue(t, tc.after))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if maskString(got) != tc.want {
+				t.Fatalf("merged mask = %s, want %s", maskString(got), tc.want)
+			}
+		})
+	}
+}
+
+func TestDecodeSnapshotConflictingMaskShapesRedactSource(t *testing.T) {
+	for _, tc := range []struct{ name, planned, after string }{
+		{"object with array", `{"items":{"secret":false},"public":"visible"}`, `{"items":[false]}`},
+		{"array with object", `{"items":[false],"public":"visible"}`, `{"items":{"secret":false}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := fmt.Sprintf(`{"planned_values":{"root_module":{"resources":[{"address":"test_item.one","type":"test_item","name":"one","values":{"items":{"secret":"hidden","public":"nested-visible"},"public":"visible"},"sensitive_values":%s}]}},"resource_changes":[{"address":"test_item.one","change":{"after_sensitive":%s}}]}`, tc.planned, tc.after)
+			got, err := DecodeSnapshot([]byte(input), true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attrs := got.Resources[0].Instances[0].Attributes
+			if !attrs["items"].Sensitive || attrs["public"].Sensitive {
+				t.Fatalf("conflict sensitivity = items:%v public:%v", attrs["items"].Sensitive, attrs["public"].Sensitive)
+			}
+			var descendants map[string]struct {
+				Sensitive bool `json:"sensitive"`
+			}
+			if err := json.Unmarshal(attrs["items"].Value, &descendants); err != nil {
+				t.Fatal(err)
+			}
+			for key, child := range descendants {
+				if !child.Sensitive {
+					t.Fatalf("conflicting subtree descendant %q lost sensitivity: %s", key, attrs["items"].Value)
+				}
+			}
+		})
+	}
+}
+
 func TestDecodeSnapshotSensitiveArrayMaskUnionRedactsSource(t *testing.T) {
 	input := []byte(`{"planned_values":{"root_module":{"resources":[{"address":"test_item.one","type":"test_item","name":"one","values":{"items":["left-secret","right-secret"],"public":"visible"},"sensitive_values":{"items":[true,false]}}]}},"resource_changes":[{"address":"test_item.one","change":{"after_sensitive":{"items":[false,true]}}}]}`)
 	got, err := DecodeSnapshot(input, true)

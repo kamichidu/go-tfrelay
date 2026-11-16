@@ -313,10 +313,10 @@ func parseOptionalValue(raw json.RawMessage) (jsonValue, error) {
 }
 
 func mergeMaskObjects(a, b jsonValue) (jsonValue, error) {
-	if a.kind == "" {
+	if a.kind == "" || a.kind == "null" {
 		return b, nil
 	}
-	if b.kind == "" {
+	if b.kind == "" || b.kind == "null" {
 		return a, nil
 	}
 	if maskTrue(a) || maskTrue(b) {
@@ -348,13 +348,16 @@ func mergeMaskObjects(a, b jsonValue) (jsonValue, error) {
 		}
 		return out, nil
 	}
-	if a.kind != "object" || b.kind != "object" {
-		// Masks are partial metadata. A shape mismatch contributes no
-		// information unless one side marks the whole path sensitive.
-		if a.kind == "object" {
-			return a, nil
-		}
+	if a.kind == "boolean" && !maskTrue(a) {
 		return b, nil
+	}
+	if b.kind == "boolean" && !maskTrue(b) {
+		return a, nil
+	}
+	if a.kind != "object" || b.kind != "object" {
+		// A conflicting shape cannot be safely merged path by path. Mark the
+		// whole path sensitive so neither side's sensitivity is discarded.
+		return trueMask(), nil
 	}
 	out := jsonValue{kind: "object", obj: map[string]jsonValue{}}
 	for k, v := range a.obj {

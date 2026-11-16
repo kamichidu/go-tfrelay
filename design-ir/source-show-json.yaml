@@ -238,12 +238,12 @@ nodes:
         missing_unknown_path: explicitly true paths materialize an unknown Value
         missing_in_values_and_mask: keep absent
         missing_sensitive_path: no additional information; retain planned value as represented
-        differing_mask_shape: merge matching paths; ignore absent paths without rejecting the plan
+        differing_mask_shape: when both masks define a path with conflicting container shapes, mark that path true to preserve confidentiality; missing paths retain the present mask without rejecting the plan
         known_null: remains known unless a true unknown mask marks that path
         proposed_unknown: not consumed; it does not affect values, membership, masks, or validation
       effective_sensitive: parent_effective OR local_sensitive
       known_null: remains known unless unknown mask marks its path
-      partial_masks: merge matching paths; absent paths and differing shapes add no information and do not alone reject input
+      partial_masks: recursively OR matching shapes; true dominates; false with a container retains the container; missing paths retain the present mask; conflicting object/array shapes resolve to true at the conflict path to preserve confidentiality
       proposed_unknown_role: not consumed for values, membership, masks, or validation
   - id: DEC-RESOURCE-ADDRESS
     level: system_design
