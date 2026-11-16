@@ -2,8 +2,104 @@ package showjson
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 )
+
+func TestDecodeSnapshotSensitiveMaskShapeMerges(t *testing.T) {
+	tests := []struct {
+		name    string
+		planned string
+		after   string
+		want    string
+	}{
+		{name: "planned true with change object", planned: `true`, after: `{"nested":{"leaf":true}}`, want: `true`},
+		{name: "planned object with change true", planned: `{"nested":{"leaf":true}}`, after: `true`, want: `true`},
+		{name: "nested true applies to descendants", planned: `{"parent":{"child":true}}`, after: `{"parent":{"child":{"leaf":false}}}`, want: `{"parent":{"child":true}}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			input := fmt.Sprintf(`{
+  "planned_values":{"root_module":{"resources":[{"address":"test_item.one","type":"test_item","name":"one","values":{"parent":{"child":{"leaf":"secret"},"sibling":"public"},"other":"also secret"},"sensitive_values":%s}]}},
+  "resource_changes":[{"address":"test_item.one","change":{"after_sensitive":%s}}]
+}`, tc.planned, tc.after)
+			got, err := DecodeSnapshot([]byte(input), true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attrs := got.Resources[0].Instances[0].Attributes
+			if tc.want == `true` {
+				if !attrs["parent"].Sensitive || (tc.name != "nested true applies to descendants" && !attrs["other"].Sensitive) {
+					t.Fatalf("true mask did not propagate: parent=%+v other=%+v", attrs["parent"], attrs["other"])
+				}
+				var parent map[string]struct {
+					Sensitive bool            `json:"Sensitive"`
+					Value     json.RawMessage `json:"Value"`
+				}
+				if err := json.Unmarshal(attrs["parent"].Value, &parent); err != nil {
+					t.Fatal(err)
+				}
+				if !parent["child"].Sensitive || (tc.name != "nested true applies to descendants" && !parent["sibling"].Sensitive) {
+					t.Fatalf("parent sensitivity did not inherit to all descendants: %+v", parent)
+				}
+				return
+			}
+			if (tc.name != "nested true applies to descendants" && !attrs["parent"].Sensitive) || attrs["other"].Sensitive {
+				t.Fatalf("nested masks contaminated siblings: parent=%+v other=%+v", attrs["parent"], attrs["other"])
+			}
+			var parent map[string]struct {
+				Sensitive bool            `json:"Sensitive"`
+				Value     json.RawMessage `json:"Value"`
+			}
+			if err := json.Unmarshal(attrs["parent"].Value, &parent); err != nil {
+				t.Fatal(err)
+			}
+			var child map[string]struct {
+				Sensitive bool `json:"Sensitive"`
+			}
+			if err := json.Unmarshal(parent["child"].Value, &child); err != nil {
+				t.Fatal(err)
+			}
+			if !child["leaf"].Sensitive || parent["sibling"].Sensitive {
+				t.Fatalf("nested true mask did not propagate within its parent: parent=%+v child=%+v", parent, child)
+			}
+		})
+	}
+}
+
+func TestDecodeSnapshotOrdersResourcesAndInstances(t *testing.T) {
+	input := []byte(`{
+  "values":{"root_module":{"resources":[
+    {"address":"z_item.last","type":"z_item","name":"last","values":{"items":["z-first","z-second"]}},
+    {"address":"a_item[\"z\"]","type":"a_item","name":"item","index":"z","values":{"value":"z"}},
+    {"address":"a_item[\"a\"]","type":"a_item","name":"item","index":"a","values":{"value":"a"}},
+    {"address":"a_other.one","type":"a_other","name":"one","values":{"value":"other"}}
+  ]}}
+}`)
+	got, err := DecodeSnapshot(input, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, resource := range got.Resources {
+		for _, instance := range resource.Instances {
+			order = append(order, instance.Address)
+		}
+	}
+	want := []string{`a_item["a"]`, `a_item["z"]`, "a_other.one", "z_item.last"}
+	if fmt.Sprint(order) != fmt.Sprint(want) {
+		t.Fatalf("instance order = %v, want %v", order, want)
+	}
+	var array []struct {
+		Value string `json:"Value"`
+	}
+	if err := json.Unmarshal(got.Resources[2].Instances[0].Attributes["items"].Value, &array); err != nil {
+		t.Fatal(err)
+	}
+	if len(array) != 2 || array[0].Value != "z-first" || array[1].Value != "z-second" {
+		t.Fatalf("array attribute order changed: %+v", array)
+	}
+}
 
 func TestResourceBlockAddressWithQuotedInstanceKeys(t *testing.T) {
 	for _, tc := range []struct{ address, want string }{

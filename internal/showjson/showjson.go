@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/kamichidu/go-tfrelay"
@@ -166,7 +167,16 @@ func DecodeSnapshot(input []byte, planned bool) (tfrelay.RelayData, error) {
 	if err := walkModule(root, masks, providers, groups); err != nil {
 		return out, err
 	}
-	for _, resource := range groups {
+	groupKeys := make([]string, 0, len(groups))
+	for key := range groups {
+		groupKeys = append(groupKeys, key)
+	}
+	sort.Strings(groupKeys)
+	for _, key := range groupKeys {
+		resource := groups[key]
+		sort.Slice(resource.Instances, func(i, j int) bool {
+			return resource.Instances[i].Address < resource.Instances[j].Address
+		})
 		out.Resources = append(out.Resources, *resource)
 	}
 	return out, nil
@@ -211,6 +221,7 @@ func walkModule(raw json.RawMessage, masks map[string]instanceMasks, providers m
 		if err != nil {
 			return err
 		}
+		resourceSensitive := maskTrue(changeSensitive)
 		merged := make(map[string]tfrelay.Value, len(valueMap))
 		keys := map[string]bool{}
 		for k := range valueMap {
@@ -229,7 +240,7 @@ func walkModule(raw json.RawMessage, masks map[string]instanceMasks, providers m
 			if !present && !maskHasTrue(unknownMask) {
 				continue
 			}
-			merged[key], err = normalizeValue(v, present, unknownMask, sensitiveMask, false)
+			merged[key], err = normalizeValue(v, present, unknownMask, sensitiveMask, resourceSensitive)
 			if err != nil {
 				return fmt.Errorf("resource %s attribute %s: %w", resource.Address, key, err)
 			}
@@ -308,27 +319,44 @@ func mergeMaskObjects(a, b jsonValue) (jsonValue, error) {
 	if b.kind == "" {
 		return a, nil
 	}
+	if maskTrue(a) || maskTrue(b) {
+		return trueMask(), nil
+	}
+	if a.kind == "boolean" && b.kind == "boolean" {
+		return falseMask(), nil
+	}
 	if a.kind != "object" || b.kind != "object" {
-		return jsonValue{}, errors.New("mask must be an object")
+		// Masks are partial metadata. A shape mismatch contributes no
+		// information unless one side marks the whole path sensitive.
+		if a.kind == "object" {
+			return a, nil
+		}
+		return b, nil
 	}
 	out := jsonValue{kind: "object", obj: map[string]jsonValue{}}
 	for k, v := range a.obj {
 		out.obj[k] = v
 	}
 	for k, v := range b.obj {
-		if prior, ok := out.obj[k]; ok && prior.kind == "object" && v.kind == "object" {
+		if prior, ok := out.obj[k]; ok {
 			merged, err := mergeMaskObjects(prior, v)
 			if err != nil {
 				return out, err
 			}
 			out.obj[k] = merged
-		} else if ok && maskTrue(prior) {
-			continue
 		} else {
 			out.obj[k] = v
 		}
 	}
 	return out, nil
+}
+
+func trueMask() jsonValue {
+	return jsonValue{raw: json.RawMessage("true"), kind: "boolean"}
+}
+
+func falseMask() jsonValue {
+	return jsonValue{raw: json.RawMessage("false"), kind: "boolean"}
 }
 func maskChildren(v jsonValue) map[string]jsonValue {
 	if v.kind == "object" {
