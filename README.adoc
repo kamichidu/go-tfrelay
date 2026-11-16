@@ -35,14 +35,17 @@ go install github.com/kamichidu/go-tfrelay/cmd/...
 
 [source,bash]
 ----
-terraform plan -out ./planfile
-
 # create config file, see sample.yml
 vim .terraform-relay.yml
 
 # will generate output depends on sink plugin
 terraform-relay
 ----
+
+The Terraform Source runs `terraform plan -out=.terraform-relay.tfplan` and
+`terraform show -json .terraform-relay.tfplan`. Terraform initialization,
+backend authentication/configuration, and workspace selection must already be
+set up in the working directory.
 
 == Configuration
 

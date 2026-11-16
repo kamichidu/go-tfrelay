@@ -42,7 +42,7 @@ func (p *Pipeline) doSink(ctx context.Context) (io.WriteCloser, <-chan struct{},
 		writers = append(writers, pw)
 		closers = append(closers, pw)
 	}
-	doneCh := make(chan struct{}, 0)
+	doneCh := make(chan struct{})
 	go func() {
 		defer close(doneCh)
 		wg.Wait()
