@@ -12,8 +12,10 @@ import (
 	"github.com/kamichidu/go-tfrelay/internal/config"
 )
 
-func (p *Pipeline) doSink(ctx context.Context) (io.WriteCloser, <-chan struct{}, error) {
+func (p *Pipeline) doSink(ctx context.Context) (io.WriteCloser, <-chan error, error) {
 	var wg sync.WaitGroup
+	var failures error
+	var failuresMu sync.Mutex
 	fn := func(cfg config.RelayPluginConfig, r io.Reader) {
 		defer wg.Done()
 
@@ -26,6 +28,9 @@ func (p *Pipeline) doSink(ctx context.Context) (io.WriteCloser, <-chan struct{},
 		log.Printf("info: spawn %s\n\tworking_dir=%s", cmd.String(), cmd.Dir)
 		if err := cmd.Run(); err != nil {
 			log.Printf("error: failure %s\n\tworking_dir=%s", cmd.String(), cmd.Dir)
+			failuresMu.Lock()
+			failures = multierror.Append(failures, err)
+			failuresMu.Unlock()
 			return
 		}
 		log.Printf("info: success %s\n\tworking_dir=%s", cmd.String(), cmd.Dir)
@@ -42,10 +47,11 @@ func (p *Pipeline) doSink(ctx context.Context) (io.WriteCloser, <-chan struct{},
 		writers = append(writers, pw)
 		closers = append(closers, pw)
 	}
-	doneCh := make(chan struct{})
+	doneCh := make(chan error, 1)
 	go func() {
-		defer close(doneCh)
 		wg.Wait()
+		doneCh <- failures
+		close(doneCh)
 	}()
 	return &sinkWriter{
 		Writer:  io.MultiWriter(writers...),

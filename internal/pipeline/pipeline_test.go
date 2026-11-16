@@ -41,6 +41,15 @@ func TestPipelineZeroSourcesProduceEmptyStateSnapshot(t *testing.T) {
 	}
 }
 
+func TestPipelineReturnsSinkChildFailure(t *testing.T) {
+	p := &Pipeline{Config: &config.RelayConfig{Plugins: config.RelayPluginsConfig{
+		Sink: []config.RelayPluginConfig{{Command: "sh", Args: []string{"-c", "cat >/dev/null; exit 23"}}},
+	}}}
+	if err := p.Do(context.Background()); err == nil {
+		t.Fatal("expected sink child failure")
+	}
+}
+
 func runPipeline(t *testing.T, sources []config.RelayPluginConfig) string {
 	t.Helper()
 	output := filepath.Join(t.TempDir(), "sink.json")
