@@ -29,6 +29,10 @@ Sink plugin::
 [source,bash]
 ----
 go install github.com/kamichidu/go-tfrelay/cmd/...
+
+# Install the independent XLSX sink module from a repository checkout
+cd plugins/sink-xlsx
+go install ./cmd/tfrelay-sink-xlsx
 ----
 
 === How to Use
@@ -46,6 +50,14 @@ The Terraform Source runs `terraform plan -out=.terraform-relay.tfplan` and
 `terraform show -json .terraform-relay.tfplan`. Terraform initialization,
 backend authentication/configuration, and workspace selection must already be
 set up in the working directory.
+
+The XLSX sink is maintained as a separate Go module under
+`plugins/sink-xlsx`. Set `TFRELAY_SINK_XLSX_OUTPUT` to the destination path;
+the default `-` writes the XLSX file to standard output. The sink writes a
+stable `Resources` worksheet with one row per attribute path. Sensitive
+attributes are redacted, including nested object and array values, and unknown
+values are marked as `<unknown>`. File output is replaced only after the
+workbook has been written successfully.
 
 == Configuration
 
