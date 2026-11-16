@@ -34,8 +34,8 @@ func TestCanonicalPlanPreservesSemanticFields(t *testing.T) {
 	}
 }
 
-func TestCanonicalRelayNormalizesGeneratedIDOnly(t *testing.T) {
-	input := []byte(`{"resources":[{"__id__":"random","type":"x","name":"a","instances":[{"index_key":"1","attributes":{"value":1},"sensitive_attributes":[{"type":"get_attr","value":"secret"}]}]}]}`)
+func TestCanonicalRelayPreservesRelayFields(t *testing.T) {
+	input := []byte(`{"resources":[{"type":"x","name":"a","instances":[{"index_key":"1","attributes":{"value":1},"sensitive_attributes":[{"type":"get_attr","value":"secret"}]}]}]}`)
 	got, err := CanonicalRelay(input)
 	if err != nil {
 		t.Fatal(err)
@@ -44,9 +44,6 @@ func TestCanonicalRelayNormalizesGeneratedIDOnly(t *testing.T) {
 		if !bytes.Contains(got, []byte(preserved)) {
 			t.Errorf("canonical JSON lost %q: %s", preserved, got)
 		}
-	}
-	if !bytes.Contains(got, []byte(`<generated>`)) || bytes.Contains(got, []byte(`"__id__": "random"`)) {
-		t.Fatalf("generated ID not normalized: %s", got)
 	}
 }
 

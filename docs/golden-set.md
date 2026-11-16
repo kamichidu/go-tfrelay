@@ -30,6 +30,6 @@ The update command is never run by CI. CI is read-only with respect to golden fi
 
 ## Comparison rules
 
-JSON is decoded into objects before comparison, so object key order has no meaning and numbers are retained without floating-point conversion. The plan comparator replaces only the generated top-level `timestamp` with `null` and sorts resource-set arrays by address. It preserves configuration, defaults, unknown values, sensitive markers, prior values, and action details. The relay comparator replaces only generated `__id__` values and sorts resource and instance collections by stable keys. No attribute values or sensitivity metadata are removed.
+JSON is decoded into objects before comparison, so object key order has no meaning and numbers are retained without floating-point conversion. The plan comparator replaces only the generated top-level `timestamp` with `null` and sorts resource-set arrays by address. It preserves configuration, defaults, unknown values, sensitive markers, prior values, and action details. The relay comparator sorts resource and instance collections by stable keys. No attribute values or sensitivity metadata are removed.
 
 Changes to a fixture, toolchain, provider schema, or output must be reviewed together with the resulting `plan.json` and `expected.json`. The golden files are executable compatibility evidence, not an automatic approval of changed behavior.

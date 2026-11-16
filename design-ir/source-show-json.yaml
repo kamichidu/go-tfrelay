@@ -266,7 +266,6 @@ nodes:
       source_grouping_key: containing module-instance address plus mode, type, and local name
       ordering: Source resources by source grouping key; Source instances by exact address; Transform resource order is not semantic
       local_name: retain Terraform resource local name
-      resource_id: retain as opaque tfrelay correlation identifier, never as Terraform address
   - id: DEC-PROVIDER
     level: system_design
     kind: design_choice
@@ -391,7 +390,7 @@ nodes:
     kind: inspected_implementation
     statement: >-
       At the historical reviewed baseline, RelayData contained resources; Resource contained
-      __id__, type, name, provider, and instances; Instance contains optional
+      type, name, provider, and instances; Instance contains optional
       index_key, raw JSON attributes, and sensitive_attributes. The planfile
       Source reads binary plan data, applies create/update/delete changes to
       state, omits not-wholly-known values, and does not expose complete
@@ -603,7 +602,6 @@ extensions:
         resources: Resource[]
       resource:
         retained_fields:
-          __id__: opaque tfrelay correlation identifier; not a Terraform address
           type: Terraform resource type
           name: local Terraform name
           provider: optional Terraform provider source address

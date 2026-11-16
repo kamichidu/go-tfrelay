@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/kamichidu/go-tfrelay"
 )
 
@@ -242,7 +241,7 @@ func walkModule(raw json.RawMessage, masks map[string]instanceMasks, providers m
 		groupKey := resourceBlockAddress(resource.Address) + "\x00" + provider
 		group := groups[groupKey]
 		if group == nil {
-			group = &tfrelay.Resource{ResourceID: uuid.NewString(), Type: resource.Type, Name: resource.Name, Provider: provider}
+			group = &tfrelay.Resource{Type: resource.Type, Name: resource.Name, Provider: provider}
 			groups[groupKey] = group
 		}
 		instance := tfrelay.Instance{Address: resource.Address, Attributes: merged}

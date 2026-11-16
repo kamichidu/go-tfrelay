@@ -9,9 +9,6 @@ type RelayData struct {
 }
 
 type Resource struct {
-	// set by source plugin or transform plugin
-	ResourceID string `json:"__id__"`
-
 	Type string `json:"type"`
 
 	Name string `json:"name"`

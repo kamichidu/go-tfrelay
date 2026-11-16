@@ -2,7 +2,6 @@
   "ir_version": 1,
   "resources": [
     {
-      "__id__": "<generated>",
       "instances": [
         {
           "address": "terraform_data.changed[0]",

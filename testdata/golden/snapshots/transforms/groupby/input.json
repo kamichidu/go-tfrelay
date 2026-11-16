@@ -3,21 +3,18 @@
   "snapshot_kind": "planned",
   "resources": [
     {
-      "__id__": "resource-a",
       "type": "terraform_data",
       "name": "first",
       "provider": "provider-a",
       "instances": [{"address":"terraform_data.first", "attributes": {"input": {"state":"known","type":"string","value":"one"}}, "sensitive_attributes": null}]
     },
     {
-      "__id__": "resource-b",
       "type": "terraform_data",
       "name": "second",
       "provider": "provider-b",
       "instances": [{"address":"terraform_data.second", "attributes": {"input": {"state":"known","type":"string","value":"two"}}, "sensitive_attributes": null}]
     },
     {
-      "__id__": "resource-c",
       "type": "time_offset",
       "name": "fixed",
       "provider": "provider-time",

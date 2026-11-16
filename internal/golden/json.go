@@ -24,8 +24,8 @@ func CanonicalPlan(data []byte) ([]byte, error) {
 	return marshalJSON(value)
 }
 
-// CanonicalRelay normalizes only generated resource IDs and ordering of relay
-// resource collections. Attribute values and sensitive paths remain intact.
+// CanonicalRelay normalizes ordering of relay resource collections.
+// Attribute values and sensitive paths remain intact.
 func CanonicalRelay(data []byte) ([]byte, error) {
 	value, err := decodeJSON(data)
 	if err != nil {
@@ -87,10 +87,6 @@ func canonicalizeRelay(value any) {
 	switch value := value.(type) {
 	case map[string]any:
 		for key, child := range value {
-			if key == "__id__" {
-				value[key] = "<generated>"
-				continue
-			}
 			canonicalizeRelay(child)
 			if key == "resources" {
 				sortObjects(child, "type", "name")
