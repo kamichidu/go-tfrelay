@@ -10,14 +10,18 @@ type RelayData struct {
 }
 
 type Resource struct {
+	Address   string     `json:"address,omitempty"`
 	Type      string     `json:"type"`
 	Name      string     `json:"name"`
+	Provider  string     `json:"provider,omitempty"`
 	Instances []Instance `json:"instances"`
 }
 
 type Instance struct {
-	Address    string           `json:"address"`
-	Attributes map[string]Value `json:"attributes"`
+	Address             string           `json:"address"`
+	IndexKey            string           `json:"index_key,omitempty"`
+	Attributes          map[string]Value `json:"attributes"`
+	SensitiveAttributes json.RawMessage  `json:"sensitive_attributes"`
 }
 
 type Value struct {

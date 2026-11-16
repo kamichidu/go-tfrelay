@@ -8,14 +8,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/kamichidu/go-tfrelay/plugins/sink-xlsx/internal/projection"
 	"github.com/xuri/excelize/v2"
 )
 
 const (
-	redacted = "[REDACTED]"
-	unknown  = "<unknown>"
+	redacted     = "[REDACTED]"
+	unknown      = "<unknown>"
+	maxDataRows  = 1_048_575
+	maxCellRunes = 32_767
 )
 
 type row struct{ resource, instance, path, value, state string }
@@ -44,6 +47,9 @@ func Write(data projection.RelayData, out *bytes.Buffer) error {
 	for i, r := range rows {
 		values := []string{r.resource, r.instance, r.path, r.value, r.state}
 		for col, value := range values {
+			if utf8.RuneCountInString(value) > maxCellRunes {
+				return fmt.Errorf("row %d column %d exceeds Excel's %d character cell limit", i+2, col+1, maxCellRunes)
+			}
 			cell, _ := excelize.CoordinatesToCellName(col+1, i+2)
 			if err := f.SetCellStr(sheet, cell, value); err != nil {
 				return err
@@ -74,9 +80,9 @@ func rowsFor(data projection.RelayData) ([]row, error) {
 			if instance.Address == "" {
 				return nil, fmt.Errorf("resource %s omitted instance address", resource.Type+"."+resource.Name)
 			}
-			resourceAddress := instance.Address
-			if bracket := strings.LastIndex(resourceAddress, "["); bracket >= 0 && strings.HasSuffix(resourceAddress, "]") {
-				resourceAddress = resourceAddress[:bracket]
+			resourceAddress := resource.Address
+			if resourceAddress == "" {
+				resourceAddress = resource.Type + "." + resource.Name
 			}
 			keys := make([]string, 0, len(instance.Attributes))
 			for key := range instance.Attributes {
@@ -109,13 +115,11 @@ func appendValue(rows *[]row, resource, instance, path string, value projection.
 		if state == "" {
 			state = "known"
 		}
-		*rows = append(*rows, row{resource, instance, path, redacted, state})
-		return nil
+		return addRow(rows, row{resource, instance, path, redacted, state})
 	}
 	switch value.State {
 	case "unknown":
-		*rows = append(*rows, row{resource, instance, path, unknown, "unknown"})
-		return nil
+		return addRow(rows, row{resource, instance, path, unknown, "unknown"})
 	case "known":
 	default:
 		return fmt.Errorf("unsupported value state %q", value.State)
@@ -132,7 +136,9 @@ func appendValue(rows *[]row, resource, instance, path string, value projection.
 		}
 		sort.Strings(keys)
 		if len(keys) == 0 {
-			*rows = append(*rows, row{resource, instance, path, "{}", "known"})
+			if err := addRow(rows, row{resource, instance, path, "{}", "known"}); err != nil {
+				return err
+			}
 		}
 		for _, key := range keys {
 			if err := appendValue(rows, resource, instance, path+"."+key, children[key]); err != nil {
@@ -145,7 +151,9 @@ func appendValue(rows *[]row, resource, instance, path string, value projection.
 			return fmt.Errorf("decode array: %w", err)
 		}
 		if len(children) == 0 {
-			*rows = append(*rows, row{resource, instance, path, "[]", "known"})
+			if err := addRow(rows, row{resource, instance, path, "[]", "known"}); err != nil {
+				return err
+			}
 		}
 		for i, child := range children {
 			if err := appendValue(rows, resource, instance, path+"["+strconv.Itoa(i)+"]", child); err != nil {
@@ -166,7 +174,15 @@ func appendValue(rows *[]row, resource, instance, path string, value projection.
 				return err
 			}
 		}
-		*rows = append(*rows, row{resource, instance, path, text, "known"})
+		return addRow(rows, row{resource, instance, path, text, "known"})
 	}
+	return nil
+}
+
+func addRow(rows *[]row, value row) error {
+	if len(*rows) >= maxDataRows {
+		return fmt.Errorf("plan exceeds Excel's %d data row limit", maxDataRows)
+	}
+	*rows = append(*rows, value)
 	return nil
 }

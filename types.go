@@ -9,6 +9,8 @@ type RelayData struct {
 }
 
 type Resource struct {
+	Address string `json:"address,omitempty"`
+
 	Type string `json:"type"`
 
 	Name string `json:"name"`
