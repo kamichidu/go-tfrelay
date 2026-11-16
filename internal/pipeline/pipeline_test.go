@@ -42,12 +42,52 @@ func TestPipelineZeroSourcesProduceEmptyStateSnapshot(t *testing.T) {
 }
 
 func TestPipelineReturnsSinkChildFailure(t *testing.T) {
-	p := &Pipeline{Config: &config.RelayConfig{Plugins: config.RelayPluginsConfig{
-		Sink: []config.RelayPluginConfig{{Command: "sh", Args: []string{"-c", "cat >/dev/null; exit 23"}}},
-	}}}
-	if err := p.Do(context.Background()); err == nil {
+	command := "cat >/dev/null; exit 23"
+	err := runPipelineWithSinks(t, []config.RelayPluginConfig{{Command: "sh", Args: []string{"-c", command}}})
+	if err == nil {
 		t.Fatal("expected sink child failure")
 	}
+	if !strings.Contains(err.Error(), "sink /usr/bin/sh -c "+command) {
+		t.Fatalf("sink failure should identify command, got %v", err)
+	}
+}
+
+func TestPipelineReturnsSinkFailureWhenAnotherSinkSucceeds(t *testing.T) {
+	successOutput := filepath.Join(t.TempDir(), "success.json")
+	command := "cat >/dev/null; exit 23"
+	err := runPipelineWithSinks(t, []config.RelayPluginConfig{
+		{Command: "sh", Args: []string{"-c", "cat > " + successOutput}},
+		{Command: "sh", Args: []string{"-c", command}},
+	})
+	if err == nil {
+		t.Fatal("expected pipeline error when one sink fails")
+	}
+	if data, readErr := os.ReadFile(successOutput); readErr != nil || !strings.Contains(string(data), `"snapshot_kind":"state"`) {
+		t.Fatalf("successful sink did not receive snapshot: data=%q err=%v", data, readErr)
+	}
+}
+
+func TestPipelineReturnsAllSinkFailures(t *testing.T) {
+	commands := []string{"cat >/dev/null; exit 23", "cat >/dev/null; exit 29"}
+	sinks := make([]config.RelayPluginConfig, 0, len(commands))
+	for _, command := range commands {
+		sinks = append(sinks, config.RelayPluginConfig{Command: "sh", Args: []string{"-c", command}})
+	}
+	err := runPipelineWithSinks(t, sinks)
+	if err == nil {
+		t.Fatal("expected pipeline error when all sinks fail")
+	}
+	for _, command := range commands {
+		if !strings.Contains(err.Error(), "sink /usr/bin/sh -c "+command) {
+			t.Errorf("error %q does not identify failing command %q", err, command)
+		}
+	}
+}
+
+func runPipelineWithSinks(t *testing.T, sinks []config.RelayPluginConfig) error {
+	t.Helper()
+	p := &Pipeline{Config: &config.RelayConfig{Plugins: config.RelayPluginsConfig{Sink: sinks}}}
+	return p.Do(context.Background())
 }
 
 func runPipeline(t *testing.T, sources []config.RelayPluginConfig) string {

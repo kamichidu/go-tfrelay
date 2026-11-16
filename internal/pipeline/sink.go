@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -29,7 +30,7 @@ func (p *Pipeline) doSink(ctx context.Context) (io.WriteCloser, <-chan error, er
 		if err := cmd.Run(); err != nil {
 			log.Printf("error: failure %s\n\tworking_dir=%s", cmd.String(), cmd.Dir)
 			failuresMu.Lock()
-			failures = multierror.Append(failures, err)
+			failures = multierror.Append(failures, fmt.Errorf("sink %s: %w", cmd.String(), err))
 			failuresMu.Unlock()
 			return
 		}
