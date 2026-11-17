@@ -1,3 +1,5 @@
+//go:build workspace_contract
+
 package contracttest
 
 import (
@@ -6,38 +8,13 @@ import (
 	"testing"
 
 	tfrelay "github.com/kamichidu/go-tfrelay"
+	"github.com/kamichidu/go-tfrelay/plugins/sink-xlsx/internal/projection"
 )
 
-// This fixture mirrors the XLSX module's deliberately duplicated wire structs.
-// Keep it dependency-free so the nested module remains independently consumable.
-type xlsxRelayData struct {
-	IRVersion    int            `json:"ir_version"`
-	SnapshotKind string         `json:"snapshot_kind"`
-	Resources    []xlsxResource `json:"resources"`
-}
-type xlsxResource struct {
-	Type      string         `json:"type"`
-	Name      string         `json:"name"`
-	Provider  string         `json:"provider,omitempty"`
-	Instances []xlsxInstance `json:"instances"`
-}
-type xlsxInstance struct {
-	Address             string               `json:"address"`
-	IndexKey            string               `json:"index_key,omitempty"`
-	Attributes          map[string]xlsxValue `json:"attributes"`
-	SensitiveAttributes json.RawMessage      `json:"sensitive_attributes"`
-}
-type xlsxValue struct {
-	State     string          `json:"state"`
-	Type      string          `json:"type,omitempty"`
-	Sensitive bool            `json:"sensitive,omitempty"`
-	Value     json.RawMessage `json:"value,omitempty"`
-}
-
-func TestXLSXWireFixtureMatchesRootIR(t *testing.T) {
+func TestXLSXProjectionMatchesRootIR(t *testing.T) {
 	input := `{"ir_version":1,"snapshot_kind":"planned","resources":[{"type":"aws_instance","name":"example","provider":"registry/hashicorp/aws","instances":[{"address":"module.child.aws_instance.example[\"a[b\"]","index_key":"a[b","attributes":{"secret":{"state":"known","type":"string","sensitive":true,"value":"x"}},"sensitive_attributes":{"secret":true}}]}]}`
 	var root tfrelay.RelayData
-	var xlsx xlsxRelayData
+	var xlsx projection.RelayData
 	if err := json.Unmarshal([]byte(input), &root); err != nil {
 		t.Fatal(err)
 	}
@@ -59,9 +36,9 @@ func TestXLSXWireFixtureMatchesRootIR(t *testing.T) {
 
 func TestGoldenExpectedContainsNoResourceAddress(t *testing.T) {
 	paths := []string{
-		"../../testdata/golden/snapshots/terraform-1.17.1/create/expected.json",
-		"../../testdata/golden/snapshots/terraform-1.17.1/state/expected.json",
-		"../../testdata/golden/snapshots/terraform-1.17.1/update/expected.json",
+		"../../../../testdata/golden/snapshots/terraform-1.17.1/create/expected.json",
+		"../../../../testdata/golden/snapshots/terraform-1.17.1/state/expected.json",
+		"../../../../testdata/golden/snapshots/terraform-1.17.1/update/expected.json",
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
