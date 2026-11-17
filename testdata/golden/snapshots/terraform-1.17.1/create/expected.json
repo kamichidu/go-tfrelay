@@ -2,7 +2,6 @@
   "ir_version": 1,
   "resources": [
     {
-      "address": "random_password.defaulted",
       "instances": [
         {
           "address": "random_password.defaulted",
@@ -91,7 +90,6 @@
       "type": "random_password"
     },
     {
-      "address": "terraform_data.dependent",
       "instances": [
         {
           "address": "terraform_data.dependent",
@@ -135,7 +133,6 @@
       "type": "terraform_data"
     },
     {
-      "address": "terraform_data.fixture",
       "instances": [
         {
           "address": "terraform_data.fixture",
@@ -181,7 +178,6 @@
       "type": "terraform_data"
     },
     {
-      "address": "time_offset.fixed",
       "instances": [
         {
           "address": "time_offset.fixed",

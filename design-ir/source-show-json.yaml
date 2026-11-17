@@ -245,20 +245,21 @@ nodes:
       known_null: remains known unless unknown mask marks its path
       partial_masks: recursively OR matching shapes; true dominates; false with a container retains the container; missing paths retain the present mask; conflicting object/array shapes resolve to true at the conflict path to preserve confidentiality
       proposed_unknown_role: not consumed for values, membership, masks, or validation
-  - id: DEC-RESOURCE-ADDRESS
+  - id: DEC-INSTANCE-ADDRESS
     level: system_design
     kind: design_choice
     statement: >-
       Resource.Type and Resource.Name retain their current roles as Terraform
-      type and local name. Instance.Address is added as the exact absolute
-      Terraform instance address. Instance.IndexKey remains a string but, in
+      type and local name; Resource has no address field. Instance.Address is
+      the authoritative exact absolute Terraform instance address. Instance.IndexKey remains a string but, in
       version 1, carries the canonical JSON scalar token from the plan's index
       field so a number and a quoted string remain distinct. A singleton omits
       index_key. Source groups instances by resource block within each module
       instance; Transform may regroup resources because every Instance retains
-      its own absolute address.
+      its own absolute address. Outputs must not synthesize a resource address
+      from type/name or from an instance address.
     attributes:
-      instance_address: exact absolute address from the Terraform resource value object
+      instance_address: exact absolute address from the Terraform resource value object and authoritative resource identifier
       instance_index_key: canonical JSON scalar token, omitted for singleton
       index_source: resource.index from planned_values; omit when absent
       address_missing: fail instead of synthesizing an address

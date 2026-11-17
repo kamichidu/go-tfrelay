@@ -22,5 +22,9 @@ jobs:
       - name: Test independent XLSX sink module
         working-directory: plugins/sink-xlsx
         run: go test ./...
+      - name: Verify XLSX module without repository workspace
+        run: |
+          GOWORK=off go -C plugins/sink-xlsx test ./...
+          GOWORK=off go -C plugins/sink-xlsx install ./cmd/tfrelay-sink-xlsx
       - name: Compare fixed Terraform show JSON snapshots
         run: go run ./cmd/golden -check

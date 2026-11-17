@@ -45,7 +45,7 @@ func TestWriteRedactsNestedSensitiveValuesAndKeepsUnknowns(t *testing.T) {
 	}
 	values := map[string]string{}
 	for _, row := range rows[1:] {
-		values[row[2]] = row[3] + "/" + row[4]
+		values[row[1]] = row[2] + "/" + row[3]
 	}
 	if values["object.private"] != "[REDACTED]/known" || values["list[0]"] != "[REDACTED]/known" {
 		t.Fatalf("sensitive rows not redacted: %#v", values)
@@ -86,25 +86,5 @@ func TestWriteIsByteStable(t *testing.T) {
 	}
 	if !bytes.Equal(a.Bytes(), b.Bytes()) {
 		t.Fatal("identical input produced different workbook bytes")
-	}
-}
-
-func TestResourceAddressUsesNormalizedResourceContract(t *testing.T) {
-	addresses := []string{
-		`aws_instance.example["a[b"]`,
-		`aws_instance.example["a\\\"[b"]`,
-		`module.parent["x[y]"].module.child[0].aws_instance.example["k[b"]`,
-		`aws_instance.example[0]`,
-		`aws_instance.example["for_each"]`,
-	}
-	for _, address := range addresses {
-		data := projection.RelayData{IRVersion: 1, SnapshotKind: "planned", Resources: []projection.Resource{{Address: "module.parent.aws_instance.example", Type: "aws_instance", Name: "example", Instances: []projection.Instance{{Address: address, Attributes: map[string]projection.Value{"id": {State: "known", Type: "string", Value: json.RawMessage(`"x"`)}}}}}}}
-		rows, err := rowsFor(data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if rows[0].resource != "module.parent.aws_instance.example" || rows[0].instance != address {
-			t.Fatalf("address projection = (%q, %q), want normalized resource and original instance (%q)", rows[0].resource, rows[0].instance, address)
-		}
 	}
 }
