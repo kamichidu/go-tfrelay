@@ -2,7 +2,7 @@ name: Golden Set
 
 on:
   pull_request:
-    branches: [main, feat/cli-flagshim-migration]
+    branches: [main, feat/xlsx-sink-module-impl]
   push:
     branches: [main]
 
@@ -19,5 +19,28 @@ jobs:
           go-version: '1.27.4'
       - name: Test fixed contracts
         run: go test ./...
+      - name: Verify RelayData compatibility schema and harness
+        run: go test ./cmd/relay-compat
+      - name: Test independent XLSX sink module
+        working-directory: plugins/sink-xlsx
+        run: go test ./...
+      - name: Verify XLSX module without repository workspace
+        run: |
+          GOWORK=off go -C plugins/sink-xlsx test ./...
+          GOWORK=off go -C plugins/sink-xlsx install ./cmd/tfrelay-sink-xlsx
+      - name: Check canonical compatibility goldens
+        run: |
+          go build -o /tmp/tfrelay-transform-groupby ./cmd/tfrelay-transform-groupby
+          go run ./cmd/relay-compat -schema schema/v1/relaydata.schema.json -stage transform -input-fixture testdata/compat/v1/transform-groupby.input.json -expected testdata/compat/v1/transform-groupby.expected.json /tmp/tfrelay-transform-groupby
+          go run ./cmd/relay-compat -schema schema/v1/relaydata.schema.json -input testdata/compat/v1/relaydata.valid.json
+      - name: Check XLSX sink behavior through its artifact
+        run: GOWORK=off go -C plugins/sink-xlsx test ./internal/contracttest
       - name: Compare fixed Terraform show JSON snapshots
         run: go run ./cmd/golden -check
+
+      - name: Verify standalone checker outside repository workspace
+        run: |
+          GOWORK=off go build -o /tmp/relay-compat ./cmd/relay-compat
+          mkdir -p /tmp/relay-compat-external
+          cd /tmp/relay-compat-external
+          /tmp/relay-compat -schema "$GITHUB_WORKSPACE/schema/v1/relaydata.schema.json" -input "$GITHUB_WORKSPACE/testdata/compat/v1/relaydata.valid.json"

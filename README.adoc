@@ -29,6 +29,10 @@ Sink plugin::
 [source,bash]
 ----
 go install github.com/kamichidu/go-tfrelay/cmd/...
+
+# Install the independent XLSX sink module from a repository checkout
+cd plugins/sink-xlsx
+GOWORK=off go install ./cmd/tfrelay-sink-xlsx
 ----
 
 === How to Use
@@ -46,6 +50,60 @@ The Terraform Source runs `terraform plan -out=.terraform-relay.tfplan` and
 `terraform show -json .terraform-relay.tfplan`. Terraform initialization,
 backend authentication/configuration, and workspace selection must already be
 set up in the working directory.
+
+The XLSX sink is maintained as a separate Go module under
+`plugins/sink-xlsx`; `GOWORK=off` ensures installation uses its published module
+dependencies without relying on the repository workspace. Set `TFRELAY_SINK_XLSX_OUTPUT` to the destination path;
+the default `-` writes the XLSX file to standard output. The sink writes a
+stable `Resources` worksheet with one row per attribute path. Sensitive
+attributes are redacted, including nested object and array values, and unknown
+values are marked as `<unknown>`. File output is replaced only after the
+workbook has been written successfully.
+
+=== RelayData compatibility contract
+
+The authoritative semantic contract is
+`design-ir/source-show-json.yaml`. The machine-checkable JSON Schema is its
+projection at `schema/v1/relaydata.schema.json`; schema conformance does not
+replace the semantic requirements in the Design IR. The root project owns the
+contract and publishes versioned schema and canonical fixtures with each
+`relaydata-v1` release. External plugins should pin the release URL instead of
+depending on a repository checkout or the root Go module:
+
+[source,bash]
+----
+curl -LO https://github.com/kamichidu/go-tfrelay/releases/download/relaydata-v1/relaydata.schema.json
+curl -LO https://github.com/kamichidu/go-tfrelay/releases/download/relaydata-v1/relaydata-fixtures-v1.tar.gz
+----
+
+Install the standalone checker from the versioned root module. The resulting
+binary runs from an external plugin repository without a root checkout,
+`go.mod`, `go.work`, or build tags. The plugin itself is built in its own
+repository. Run the protocol checker with plugin-owned fixtures:
+
+[source,bash]
+----
+GOWORK=off go install github.com/kamichidu/go-tfrelay/cmd/relay-compat@latest
+go build -o ./bin/my-transform ./cmd/my-transform
+relay-compat -schema ./contract/relaydata.schema.json \\
+  -stage transform -input-fixture ./contract/fixtures/input.json \\
+  -expected ./contract/fixtures/expected.json ./bin/my-transform
+----
+
+`-input FILE` checks only that file against the selected schema and does not
+require a plugin command. Transform and `pass` modes send `-input-fixture` to
+the plugin on stdin and validate its RelayData stdout. `source` mode runs the
+plugin without stdin and validates its RelayData stdout. An optional
+`-expected FILE` compares stdout with a plugin-owned semantic golden (object
+member order is ignored; array order and number precision are preserved).
+The checker has no built-in transform golden. `sink` mode validates the input
+fixture and runs the plugin, but does not claim artifact semantics; sink
+authors must assert the emitted artifact with plugin-specific tests and its
+native reader. The XLSX module's integration test does this independently.
+
+The release workflow publishes only on the exact `relaydata-v1` tag. A future
+wire contract version must add its own schema, fixtures, and explicitly
+versioned release workflow; v1 artifacts must not be attached to a v2 tag.
 
 == Configuration
 

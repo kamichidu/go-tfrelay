@@ -245,20 +245,21 @@ nodes:
       known_null: remains known unless unknown mask marks its path
       partial_masks: recursively OR matching shapes; true dominates; false with a container retains the container; missing paths retain the present mask; conflicting object/array shapes resolve to true at the conflict path to preserve confidentiality
       proposed_unknown_role: not consumed for values, membership, masks, or validation
-  - id: DEC-RESOURCE-ADDRESS
+  - id: DEC-INSTANCE-ADDRESS
     level: system_design
     kind: design_choice
     statement: >-
       Resource.Type and Resource.Name retain their current roles as Terraform
-      type and local name. Instance.Address is added as the exact absolute
-      Terraform instance address. Instance.IndexKey remains a string but, in
+      type and local name; Resource has no address field. Instance.Address is
+      the authoritative exact absolute Terraform instance address. Instance.IndexKey remains a string but, in
       version 1, carries the canonical JSON scalar token from the plan's index
       field so a number and a quoted string remain distinct. A singleton omits
       index_key. Source groups instances by resource block within each module
       instance; Transform may regroup resources because every Instance retains
-      its own absolute address.
+      its own absolute address. Outputs must not synthesize a resource address
+      from type/name or from an instance address.
     attributes:
-      instance_address: exact absolute address from the Terraform resource value object
+      instance_address: exact absolute address from the Terraform resource value object and authoritative resource identifier
       instance_index_key: canonical JSON scalar token, omitted for singleton
       index_source: resource.index from planned_values; omit when absent
       address_missing: fail instead of synthesizing an address
@@ -345,6 +346,11 @@ nodes:
         preserve: [known_unknown_state, known_null, recursive_structure, address, index_key, sensitivity]
         provider_grouping: never combine differing Provider values into one resource-level provider field
         merge: retain per-instance values and address identity; do not collapse differing resource-level provider values
+        groupby_transform:
+          key: [Resource.Type, Resource.Provider]
+          merged_resource_name: concatenate local names in input order with "/"
+          instance_order: preserve input order
+          address: preserve each exact Instance.Address unchanged
       sink:
         input: versioned RelayData
         sensitive_default: redact or omit
@@ -376,6 +382,8 @@ nodes:
         files: [plan.json, expected.json]
         source_contract: fixed plan JSON to version-1 RelayData
       transform_sink_goldens: independent of Terraform version matrix
+      plugin_ownership: semantic goldens are supplied and maintained by each plugin; relay-compat checks protocol schema generically
+      sink_artifact_tests: plugin-owned native-reader tests; relay-compat does not claim generic artifact semantics
       environment:
         terraform: exact pinned version
         providers: exact versions and committed lockfile
@@ -704,6 +712,8 @@ extensions:
       source_end_to_end: CLI state and plan modes through terraform show -json to RelayData
       fixed_source_expected: version-1 expected.json for each environment and case
       transform_sink_contracts: Terraform-independent golden inputs and expected outputs
+      protocol_checker: generic RelayData schema checks plus optional explicit plugin input/expected paths; no root checkout, module, workspace, or tags required at runtime
+      sink_checker: validates the input protocol and plugin execution only; artifact semantics require plugin-specific tests
       semantic_json_compare:
         object_key_order: ignore
         number_precision: exact

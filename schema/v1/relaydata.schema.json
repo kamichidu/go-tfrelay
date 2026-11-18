@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kamichidu/go-tfrelay/releases/download/relaydata-v1/relaydata.schema.json",
+  "title": "tfrelay RelayData IR v1",
+  "description": "Machine-checkable projection of design-ir/source-show-json.yaml. The Design IR remains authoritative.",
+  "type": "object",
+  "required": ["ir_version", "snapshot_kind", "resources"],
+  "properties": {
+    "ir_version": {"const": 1},
+    "snapshot_kind": {"enum": ["planned", "state"]},
+    "resources": {"type": "array", "items": {"$ref": "#/$defs/resource"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "resource": {"type": "object", "required": ["type", "name", "instances"], "properties": {
+      "type": {"type": "string", "minLength": 1}, "name": {"type": "string", "minLength": 1},
+      "provider": {"type": "string", "minLength": 1}, "instances": {"type": "array", "items": {"$ref": "#/$defs/instance"}}
+    }, "additionalProperties": false},
+    "instance": {"type": "object", "required": ["address", "attributes"], "properties": {
+      "address": {"type": "string", "minLength": 1}, "index_key": {"type": "string"},
+      "attributes": {"type": "object", "additionalProperties": {"$ref": "#/$defs/value"}},
+      "sensitive_attributes": {}
+    }, "additionalProperties": false},
+    "value": {"oneOf": [
+      {"type": "object", "required": ["state", "value"], "properties": {
+        "state": {"const": "known"}, "type": {"enum": ["null", "boolean", "number", "string", "object", "array"]},
+        "sensitive": {"type": "boolean"}, "value": {"$ref": "#/$defs/jsonValue"}
+      }, "additionalProperties": false},
+      {"type": "object", "required": ["state"], "properties": {
+        "state": {"const": "unknown"}, "sensitive": {"type": "boolean"}
+      }, "additionalProperties": false}
+    ]},
+    "jsonValue": {"oneOf": [
+      {"type": "null"}, {"type": "boolean"}, {"type": "number"}, {"type": "string"},
+      {"type": "array", "items": {"$ref": "#/$defs/value"}},
+      {"type": "object", "additionalProperties": {"$ref": "#/$defs/value"}}
+    ]}
+  }
+}

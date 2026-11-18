@@ -10,6 +10,10 @@ plugins:
     # grouping resources by resource.type
     - command: tfrelay-transform-groupby
   sink:
+    # Optional XLSX export (install separately from plugins/sink-xlsx).
+    # - command: tfrelay-sink-xlsx
+    #   env:
+    #     TFRELAY_SINK_XLSX_OUTPUT: _dist/terraform.xlsx
     # generate asciidoc
     - command: tfrelay-sink-text
       env:

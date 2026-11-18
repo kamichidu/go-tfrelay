@@ -26,25 +26,30 @@ func (c *command) Run(ctx context.Context, _ []string) error {
 		return fmt.Errorf("unsupported RelayData contract: ir_version=%d snapshot_kind=%q", data.IRVersion, data.SnapshotKind)
 	}
 
-	// group by resource.type
-	memo := map[string]tfrelay.Resource{}
-	for _, v := range data.Resources {
-		key := v.Type + "\x00" + v.Provider
-		dup, ok := memo[key]
-		if ok {
-			v.Name = v.Name + "/" + dup.Name
-			v.Instances = append(v.Instances, dup.Instances...)
-		}
-		memo[key] = v
-	}
-	data.Resources = make([]tfrelay.Resource, 0, len(memo))
-	for _, v := range memo {
-		data.Resources = append(data.Resources, v)
-	}
+	data.Resources = groupResources(data.Resources)
 	if err := json.NewEncoder(flagshim.MustStdoutFromContext(ctx)).Encode(&data); err != nil {
-		return fmt.Errorf("encode output: %w", err)
+		return err
 	}
 	return nil
+}
+
+// groupResources merges only equal type/provider pairs, retaining instance
+// identity and stable first-seen ordering.
+func groupResources(resources []tfrelay.Resource) []tfrelay.Resource {
+	indices := map[string]int{}
+	grouped := make([]tfrelay.Resource, 0, len(resources))
+	for _, resource := range resources {
+		key := resource.Type + "\x00" + resource.Provider
+		index, ok := indices[key]
+		if !ok {
+			indices[key] = len(grouped)
+			grouped = append(grouped, resource)
+			continue
+		}
+		grouped[index].Name += "/" + resource.Name
+		grouped[index].Instances = append(grouped[index].Instances, resource.Instances...)
+	}
+	return grouped
 }
 
 func main() {
