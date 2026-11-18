@@ -1,0 +1,25 @@
+name: RelayData contract release
+
+on:
+  push:
+    tags:
+      - 'relaydata-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package versioned contract artifacts
+        run: |
+          mkdir -p dist/relaydata-v1/fixtures
+          cp schema/v1/relaydata.schema.json dist/relaydata-v1/
+          cp testdata/compat/v1/* dist/relaydata-v1/fixtures/
+          tar -C dist/relaydata-v1 -czf dist/relaydata-fixtures-v1.tar.gz fixtures
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/relaydata-v1/relaydata.schema.json dist/relaydata-fixtures-v1.tar.gz --title "$GITHUB_REF_NAME" --notes "RelayData v1 schema projection and canonical compatibility fixtures. Design IR remains authoritative."

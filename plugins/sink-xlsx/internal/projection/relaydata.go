@@ -2,7 +2,7 @@ package projection
 
 import "encoding/json"
 
-// RelayData mirrors the stable JSON contract without importing the root module.
+// RelayData is XLSX's local wire decoder, independent of the root module.
 type RelayData struct {
 	IRVersion    int        `json:"ir_version"`
 	SnapshotKind string     `json:"snapshot_kind"`

@@ -1,0 +1,1 @@
+{"ir_version":1,"snapshot_kind":"planned","resources":[{"type":"x","name":"a","instances":[{"address":"x.a","attributes":{"known_null":{"state":"known","type":"null","value":null},"unknown":{"state":"unknown"},"nested":{"state":"known","type":"object","value":{"child":{"state":"unknown"}}}}}]}]}

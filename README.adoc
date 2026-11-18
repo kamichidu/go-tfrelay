@@ -60,6 +60,43 @@ attributes are redacted, including nested object and array values, and unknown
 values are marked as `<unknown>`. File output is replaced only after the
 workbook has been written successfully.
 
+=== RelayData compatibility contract
+
+The authoritative semantic contract is
+`design-ir/source-show-json.yaml`. The machine-checkable JSON Schema is its
+projection at `schema/v1/relaydata.schema.json`; schema conformance does not
+replace the semantic requirements in the Design IR. The root project owns the
+contract and publishes versioned schema and canonical fixtures with each
+`relaydata-v1` release. External plugins should pin the release URL instead of
+depending on a repository checkout or the root Go module:
+
+[source,bash]
+----
+curl -LO https://github.com/kamichidu/go-tfrelay/releases/download/relaydata-v1/relaydata.schema.json
+curl -LO https://github.com/kamichidu/go-tfrelay/releases/download/relaydata-v1/relaydata-fixtures-v1.tar.gz
+----
+
+Install the standalone checker using the root module:
+
+[source,bash]
+----
+go install github.com/kamichidu/go-tfrelay/cmd/relay-compat@latest
+go build -o ./bin/my-transform ./cmd/my-transform
+relay-compat -schema ./contract/relaydata.schema.json \\
+  -fixtures ./contract/fixtures/v1 -stage transform ./bin/my-transform
+----
+
+The plugin receives one RelayData JSON document on stdin and must write one
+RelayData JSON document to stdout. The checker validates fixture input and
+plugin output against the selected schema, then compares the output with the
+canonical semantic golden (JSON object member order is ignored; array order and
+number precision are preserved). It reports schema conformance and semantic
+golden behavior separately. `-input FILE` performs schema-only validation.
+Sink authors should use the same input fixture and assert their actual emitted
+artifact through their format's native reader; the XLSX module's integration
+test demonstrates this without making the checker depend on XLSX or the root
+Go types. `-stage pass` is available for Source-like JSON stdout behavior.
+
 == Configuration
 
 [source,yaml]

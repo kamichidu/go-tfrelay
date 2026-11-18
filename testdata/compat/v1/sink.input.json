@@ -1,0 +1,1 @@
+{"ir_version":1,"snapshot_kind":"state","resources":[{"type":"test_thing","name":"example","instances":[{"address":"test_thing.example","attributes":{"name":{"state":"known","type":"string","value":"ok"},"secret":{"state":"known","type":"string","sensitive":true,"value":"hidden"},"pending":{"state":"unknown"}}}]}]}
