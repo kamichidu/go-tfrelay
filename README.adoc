@@ -76,26 +76,34 @@ curl -LO https://github.com/kamichidu/go-tfrelay/releases/download/relaydata-v1/
 curl -LO https://github.com/kamichidu/go-tfrelay/releases/download/relaydata-v1/relaydata-fixtures-v1.tar.gz
 ----
 
-Install the standalone checker using the root module:
+Install the standalone checker from the versioned root module. The resulting
+binary runs from an external plugin repository without a root checkout,
+`go.mod`, `go.work`, or build tags. The plugin itself is built in its own
+repository. Run the protocol checker with plugin-owned fixtures:
 
 [source,bash]
 ----
-go install github.com/kamichidu/go-tfrelay/cmd/relay-compat@latest
+GOWORK=off go install github.com/kamichidu/go-tfrelay/cmd/relay-compat@latest
 go build -o ./bin/my-transform ./cmd/my-transform
 relay-compat -schema ./contract/relaydata.schema.json \\
-  -fixtures ./contract/fixtures/v1 -stage transform ./bin/my-transform
+  -stage transform -input-fixture ./contract/fixtures/input.json \\
+  -expected ./contract/fixtures/expected.json ./bin/my-transform
 ----
 
-The plugin receives one RelayData JSON document on stdin and must write one
-RelayData JSON document to stdout. The checker validates fixture input and
-plugin output against the selected schema, then compares the output with the
-canonical semantic golden (JSON object member order is ignored; array order and
-number precision are preserved). It reports schema conformance and semantic
-golden behavior separately. `-input FILE` performs schema-only validation.
-Sink authors should use the same input fixture and assert their actual emitted
-artifact through their format's native reader; the XLSX module's integration
-test demonstrates this without making the checker depend on XLSX or the root
-Go types. `-stage pass` is available for Source-like JSON stdout behavior.
+`-input FILE` checks only that file against the selected schema and does not
+require a plugin command. Transform and `pass` modes send `-input-fixture` to
+the plugin on stdin and validate its RelayData stdout. `source` mode runs the
+plugin without stdin and validates its RelayData stdout. An optional
+`-expected FILE` compares stdout with a plugin-owned semantic golden (object
+member order is ignored; array order and number precision are preserved).
+The checker has no built-in transform golden. `sink` mode validates the input
+fixture and runs the plugin, but does not claim artifact semantics; sink
+authors must assert the emitted artifact with plugin-specific tests and its
+native reader. The XLSX module's integration test does this independently.
+
+The release workflow publishes only on the exact `relaydata-v1` tag. A future
+wire contract version must add its own schema, fixtures, and explicitly
+versioned release workflow; v1 artifacts must not be attached to a v2 tag.
 
 == Configuration
 

@@ -3,7 +3,7 @@ name: RelayData contract release
 on:
   push:
     tags:
-      - 'relaydata-v*'
+      - 'relaydata-v1'
 
 permissions:
   contents: write

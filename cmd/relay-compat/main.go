@@ -1,4 +1,4 @@
-// relay-compat validates RelayData and runs a plugin against semantic fixtures.
+// relay-compat validates the RelayData protocol and optionally runs a plugin.
 package main
 
 import (
@@ -10,29 +10,25 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func main() {
-	schemaPath := flag.String("schema", "schema/v1/relaydata.schema.json", "RelayData JSON Schema")
-	fixtures := flag.String("fixtures", "testdata/compat/v1", "compatibility fixture directory")
-	input := flag.String("input", "", "single RelayData file to schema-check")
-	stage := flag.String("stage", "transform", "plugin stage: transform or pass")
-	expected := flag.String("expected", "", "expected stdout file (defaults to stage fixture)")
+	schema := flag.String("schema", "schema/v1/relaydata.schema.json", "RelayData JSON Schema")
+	input := flag.String("input", "", "validate this RelayData file only; no plugin command is needed")
+	stage := flag.String("stage", "transform", "plugin mode: source, transform, sink, or pass")
+	fixture := flag.String("input-fixture", "", "RelayData fixture sent to a transform or sink")
+	expected := flag.String("expected", "", "optional expected RelayData stdout file for source/transform/pass")
 	flag.Parse()
-	if err := run(*schemaPath, *fixtures, *input, *stage, *expected, flag.Args()); err != nil {
+	if err := run(*schema, *input, *stage, *fixture, *expected, flag.Args()); err != nil {
 		fmt.Fprintln(os.Stderr, "relay-compat:", err)
 		os.Exit(1)
 	}
 }
 
-func run(schemaPath, fixtures, input, stage, expected string, args []string) error {
-	if len(args) == 0 {
-		return errors.New("plugin command is required")
-	}
+func run(schemaPath, input, stage, fixture, expected string, args []string) error {
 	compiled, err := compileSchema(schemaPath)
 	if err != nil {
 		return err
@@ -42,46 +38,55 @@ func run(schemaPath, fixtures, input, stage, expected string, args []string) err
 		if err != nil {
 			return err
 		}
-		return validate(compiled, data)
+		if err := validate(compiled, data); err != nil {
+			return err
+		}
+		fmt.Println("schema conformance: passed")
+		return nil
 	}
-	if stage != "transform" && stage != "pass" {
-		return fmt.Errorf("unknown stage %q", stage)
+	if stage != "source" && stage != "transform" && stage != "sink" && stage != "pass" {
+		return fmt.Errorf("unknown stage %q (want source, transform, sink, or pass)", stage)
 	}
-	base := filepath.Join(fixtures, "transform-groupby")
-	inPath, wantPath := base+".input.json", base+".expected.json"
-	if stage == "pass" {
-		wantPath = inPath
+	if stage == "sink" && expected != "" {
+		return errors.New("-expected is not supported for sink; verify emitted artifacts with plugin-owned tests")
 	}
-	if expected != "" {
-		wantPath = expected
+	if len(args) == 0 {
+		return errors.New("plugin command is required")
 	}
-	in, err := os.ReadFile(inPath)
-	if err != nil {
-		return fmt.Errorf("read fixture: %w", err)
-	}
-	if err := validate(compiled, in); err != nil {
-		return fmt.Errorf("fixture schema conformance: %w", err)
-	}
-	if args[0] == "go" || args[0] == "go.exe" {
-		return errors.New("pass a built plugin executable; compile it in the external repository before running relay-compat")
+	var in []byte
+	if stage == "transform" || stage == "sink" || stage == "pass" {
+		if fixture == "" {
+			return fmt.Errorf("-%s mode requires -input-fixture", stage)
+		}
+		in, err = os.ReadFile(fixture)
+		if err != nil {
+			return fmt.Errorf("read input fixture: %w", err)
+		}
+		if err := validate(compiled, in); err != nil {
+			return fmt.Errorf("fixture schema conformance: %w", err)
+		}
 	}
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Stdin = bytes.NewReader(in)
+	if in != nil {
+		cmd.Stdin = bytes.NewReader(in)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("plugin failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	if stage == "transform" || stage == "pass" {
-		if err := validate(compiled, stdout.Bytes()); err != nil {
-			return fmt.Errorf("plugin output schema conformance: %w", err)
+	if stage == "sink" {
+		fmt.Println("protocol input schema conformance: passed; plugin execution: passed (artifact semantics require plugin-owned tests)")
+		return nil
+	}
+	if err := validate(compiled, stdout.Bytes()); err != nil {
+		return fmt.Errorf("plugin output schema conformance: %w", err)
+	}
+	if expected != "" {
+		want, err := os.ReadFile(expected)
+		if err != nil {
+			return fmt.Errorf("read expected output: %w", err)
 		}
-	}
-	want, err := os.ReadFile(wantPath)
-	if err != nil {
-		return fmt.Errorf("read expected output: %w", err)
-	}
-	if stage == "transform" || stage == "pass" {
 		gotCanonical, err := canonical(stdout.Bytes())
 		if err != nil {
 			return fmt.Errorf("decode plugin output: %w", err)
@@ -91,12 +96,12 @@ func run(schemaPath, fixtures, input, stage, expected string, args []string) err
 			return fmt.Errorf("decode expected output: %w", err)
 		}
 		if !bytes.Equal(gotCanonical, wantCanonical) {
-			return fmt.Errorf("semantic golden mismatch\nwant: %s\n got: %s", wantCanonical, gotCanonical)
+			return fmt.Errorf("plugin semantic golden mismatch\nwant: %s\n got: %s", wantCanonical, gotCanonical)
 		}
-	} else if !bytes.Equal(stdout.Bytes(), want) {
-		return fmt.Errorf("semantic golden mismatch: got %d output bytes, want %d", stdout.Len(), len(want))
+		fmt.Println("protocol schema conformance: passed; plugin semantic golden: passed")
+		return nil
 	}
-	fmt.Println("schema conformance: passed; semantic golden: passed")
+	fmt.Println("protocol schema conformance: passed; plugin semantic golden: not configured")
 	return nil
 }
 
