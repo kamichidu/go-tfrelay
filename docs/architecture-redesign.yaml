@@ -18,8 +18,10 @@ nodes:
       source-v1 MUST retain the structure and semantics of current RelayData v1,
       including Resource and Instance identity, Address, missing versus known
       null versus unknown, recursive sensitivity, exact JSON number precision,
-      provider information when established, and ordered values. No stage may
-      invent unavailable value origin or provider facts.
+      provider information when established, and ordered values. The Source
+      MUST not invent unavailable value origin or provider facts. This
+      preservation obligation applies to Source output and the initial
+      source-v1 to transform-v1 projection only.
     attributes:
       norm: MUST
       scope: source-v1
@@ -52,7 +54,9 @@ nodes:
       Individual transforms and sinks MAY declare required fields, types,
       preconditions, and output guarantees. The consuming component MUST
       report an explicit error when its declared input requirements are not
-      met; incompatible records MUST NOT be silently coerced or dropped.
+      met. Required preservation, transformation, filtering, and projection
+      behavior is determined by the selected operator or Sink contract; there
+      is no universal post-projection propagation or retention rule.
     attributes:
       norm: MUST
       scope: operator contracts
@@ -94,8 +98,9 @@ nodes:
     statement: >-
       Each process boundary uses MIME Header fields, a blank line, a body, and
       EOF. Contract identity, contract version, and Content-Type are carried in
-      headers. A process invocation exchanges one framed document; body format
-      is contract-specific.
+      headers. Headers describe facts uniform over the complete body/stream
+      only; facts that vary by record are carried in record metadata. A process
+      invocation exchanges one framed document; body format is contract-specific.
     attributes:
       framing:
         sequence: [headers, blank-line, body, EOF]
@@ -158,8 +163,10 @@ nodes:
       initial source-to-transform projection is JSON Lines with one record per
       source Instance and explicit Resource/Instance context. After operators
       run, output records may use any operator-declared projection, including
-      aggregation; the initial projection does not constrain all later record
-      shapes.
+      aggregation. Source-v1 semantic preservation is required through this
+      initial projection only; thereafter records are data governed by the
+      selected operator contracts, which may preserve, transform, or remove
+      values and metadata according to their declarations.
     attributes:
       contract_id: transform
       version: 1
@@ -167,8 +174,11 @@ nodes:
       initial_projection:
         granularity: one-record-per-Instance
         required_context: [Address, Resource, Instance]
-        preserves_value_semantics: [missing, known-null, unknown, sensitivity, exact-number]
+        preserves_source_v1_semantics: [missing, known-null, unknown, sensitivity, exact-number, provider-when-known, snapshot_kind]
+        varying_source_facts: per-record-metadata
+        preservation_ends_after: initial-source-v1-to-transform-v1-projection
       post_operator_projection: arbitrary-if-declared
+      post_projection_semantics: governed-by-selected-operator-contract
       uniformity: all-transforms-share-the-same-I/O-contract
   - id: DEC-OPERATOR-CONTRACTS
     level: system_design
@@ -189,6 +199,7 @@ nodes:
     statement: >-
       Recommended candidate: represent each transform-v1 JSONL record as an
       envelope with separate metadata and data members. Metadata carries
+      per-record source facts (including source identity and snapshot_kind),
       derivable provenance and grouping/control context; data carries the
       operator's projected record. Operators declare which metadata they
       preserve, replace, or combine. This avoids forcing provenance or group
@@ -197,7 +208,7 @@ nodes:
     attributes:
       recommendation: envelope-with-metadata-and-data
       candidate_shape:
-        metadata: {source, address, group}
+        metadata: {source, address, snapshot_kind, group}
         data: operator-defined-object
       rationale: [provenance-separation, projection-independence, explicit-group-control]
       alternatives:
@@ -209,7 +220,8 @@ nodes:
     kind: design_choice
     statement: >-
       terraform-relay converts every source-v1 document into transform-v1
-      records and concatenates those records in configuration-declared source
+      records, carrying per-source facts such as snapshot_kind in each record's
+      metadata, and concatenates those records in configuration-declared source
       order. Each source's internal record order is preserved. Source identity
       accompanies each record; equal Address values from different sources
       remain distinct and detectable. No implicit deduplication or sorting is
@@ -224,26 +236,31 @@ nodes:
     statement: >-
       terraform-relay is the process and contract orchestration boundary. It
       launches plugins, propagates abnormal termination, converts only at
-      declared contract boundaries, connects multiple sources and sinks, and
-      preserves stream ordering. Transform and Sink domain behavior remains in
-      those plugins.
+      declared contract boundaries (including the common transform-v1 to
+      sink-v1 conversion), connects multiple sources and sinks, and preserves
+      stream ordering. It does not implement individual Sink semantics. Sink
+      implementations consume sink-v1 and own their physical output behavior.
     attributes:
-      responsibilities: [process-execution, abnormal-exit-propagation, boundary-conversion, source-sink-connection]
-      prohibited_knowledge: [groupby-semantics, operator-specific-field-rules, sink-layout-rules]
+      responsibilities: [process-execution, abnormal-exit-propagation, common-boundary-conversion, source-sink-connection]
+      prohibited_knowledge: [groupby-semantics, operator-specific-field-rules, individual-sink-semantics]
   - id: DEC-SINK-V1
     level: system_design
     kind: design_choice
     statement: >-
-      sink-v1 is an independent output contract rather than a promise to retain
-      RelayData structure. It consumes declared transform-v1 records and
-      produces a Sink-defined output representation; identity mapping is
-      allowed. The Sink owns mapping logical group values to physical pages,
-      sheets, files, or other destination units.
+      sink-v1 is an independent contract for records input to a Sink, rather
+      than a promise to retain RelayData structure. terraform-relay performs a
+      common transform-v1 to sink-v1 conversion. A Sink consumes sink-v1 and
+      owns its physical output behavior, including mapping logical group values
+      to pages, sheets, files, or other destination units. The exact sink-v1
+      representation remains open; identity conversion is one possible design.
     attributes:
       contract_id: sink
       version: 1
-      output_body: sink-defined-contract
-      identity_mapping_allowed: true
+      direction: input-to-sink
+      conversion_owner: terraform-relay-common-adapter
+      physical_output_owner: individual-sink
+      exact_representation: open
+      identity_conversion_candidate: true
       physical_group_projection_owner: sink
   - id: DEC-OPERATOR-ALGEBRA
     level: system_design
@@ -393,9 +410,10 @@ open_items:
     related_refs: [DEC-OPERATOR-ALGEBRA, DEC-OPERATOR-CONTRACTS]
   - id: OPEN-SINK-V1-SHAPE
     statement: >-
-      Choose the concrete sink-v1 envelope and its compatibility policy,
-      including whether a Sink consumes transform records directly or declares
-      a sink-specific projection adapter.
+      Choose the exact sink-v1 record/envelope representation and its
+      compatibility policy. The Sink input remains sink-v1, and terraform-relay
+      owns the common transform-v1 to sink-v1 conversion; this open item does
+      not reopen those boundaries.
     status: open
     related_refs: [DEC-SINK-V1, DEC-TRANSFORM-V1]
   - id: OPEN-ERROR-CHANNEL
@@ -428,4 +446,13 @@ open_items:
       the deterministic tie-breaking rule for each ordering operation.
     status: deferred
     related_refs: [DEC-OPERATOR-ALGEBRA]
+  - id: OPEN-MULTI-SINK-FANOUT
+    statement: >-
+      A later design MUST specify whether and how multiple Sinks each receive
+      all records, including fanout behavior, backpressure and buffering,
+      pipeline success criteria, treatment of partial outputs and artifact
+      commit conditions, and failure cancellation scope. The concrete methods
+      and policies remain open for that design.
+    status: deferred
+    related_refs: [DEC-ORCHESTRATOR, DEC-SINK-V1]
 representation_gaps: []
