@@ -1,0 +1,431 @@
+contract_version: 1alpha1
+schema_ref:
+  revision: c351c751475386621229717bceb4638828e4259a
+  sha256: 9b109dbc7ac09b32d3dbe2e233eed7da1378bc912d0e84c479c3ed0bed9f7103
+model:
+  id: go-tfrelay-pipeline-architecture
+  title: go-tfrelay Versioned Pipeline Contracts
+  description: >-
+    Architecture design for independent Source, Transform, and Sink contracts,
+    grounded in the main-branch RelayData v1 contract and the open XLSX sink PR.
+  domain: go-tfrelay pipeline architecture
+  profile: pipeline-contracts
+nodes:
+  - id: REQ-SEMANTIC-PRESERVATION
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      source-v1 MUST retain the structure and semantics of current RelayData v1,
+      including Resource and Instance identity, Address, missing versus known
+      null versus unknown, recursive sensitivity, exact JSON number precision,
+      provider information when established, and ordered values. No stage may
+      invent unavailable value origin or provider facts.
+    attributes:
+      norm: MUST
+      scope: source-v1
+  - id: REQ-INDEPENDENT-CONTRACTS
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      source-v1, transform-v1, and sink-v1 MUST be independently versioned
+      contracts. Each contract MUST define its own schema, framing, validation
+      boundary, and compatibility fixtures; a change to one contract does not
+      silently redefine another.
+    attributes:
+      norm: MUST
+      scope: stage boundaries
+  - id: REQ-UNIFORM-TRANSFORM
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      Every transform-v1 implementation MUST use the same framed JSON Lines
+      input and output contract. Its initial projection MUST emit one record
+      per Instance; subsequent transform outputs may use operator-declared
+      projections or aggregations.
+    attributes:
+      norm: MUST
+      scope: transform-v1
+  - id: REQ-ERROR-BOUNDARY
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      Individual transforms and sinks MAY declare required fields, types,
+      preconditions, and output guarantees. The consuming component MUST
+      report an explicit error when its declared input requirements are not
+      met; incompatible records MUST NOT be silently coerced or dropped.
+    attributes:
+      norm: MUST
+      scope: operator contracts
+  - id: REQ-DETERMINISTIC-SOURCES
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      Multiple sources MUST each be converted from source-v1 to transform-v1
+      and concatenated in declared source order while preserving each source's
+      internal order. The combined stream MUST be deterministic, retain
+      provenance sufficient to identify origin and address collisions, and
+      perform no implicit deduplication.
+    attributes:
+      norm: MUST
+      scope: source composition
+  - id: REQ-ORCHESTRATION-BOUNDARY
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      terraform-relay MUST own process execution, abnormal-exit propagation,
+      contract-boundary conversion, and connection of multiple Sources and
+      Sinks. It MUST NOT contain operator-specific semantic knowledge.
+    attributes:
+      norm: MUST
+      scope: terraform-relay
+  - id: REQ-DESIGN-ONLY
+    level: system_requirement
+    kind: normative_requirement
+    statement: >-
+      This order requests architecture design documentation only. It excludes
+      implementation changes and YAML configuration redesign; existing PR #6
+      and PR #7 are not to be modified or merged.
+    attributes:
+      norm: MUST
+      scope: this design order
+  - id: DEC-FRAMING
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Each process boundary uses MIME Header fields, a blank line, a body, and
+      EOF. Contract identity, contract version, and Content-Type are carried in
+      headers. A process invocation exchanges one framed document; body format
+      is contract-specific.
+    attributes:
+      framing:
+        sequence: [headers, blank-line, body, EOF]
+        headers_include: [contract-id, contract-version, Content-Type]
+        body_is_contract_specific: true
+  - id: DEC-SOURCE-V1
+    level: system_design
+    kind: design_choice
+    statement: >-
+      source-v1 is the current RelayData v1 resource envelope. Resource and
+      Instance structure, exact instance Address, provider when available,
+      index key, recursive Value state/type/value/sensitive semantics, missing
+      attributes, and array order remain as specified by the existing Source
+      design. Source output is not Terraform's external plan JSON.
+    artifact_refs:
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/main/design-ir/source-show-json.yaml
+        revision: c43ec81adb1ef3ee25996629f3ff97a8d9c318cb
+        role: canonical-source-semantics
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/main/design-ir/source-show-json.yaml
+        revision: c43ec81adb1ef3ee25996629f3ff97a8d9c318cb
+        role: authoritative-terraform-source-mapping
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/main/types.go
+        revision: c43ec81adb1ef3ee25996629f3ff97a8d9c318cb
+        role: observed-RelayData-v1-shape
+    attributes:
+      contract_id: source
+      version: 1
+      preserved_semantics:
+        - ir_version is explicitly 1; missing or unsupported version is rejected
+        - snapshot_kind is required with exact values planned or state; planned means resources Terraform plans to exist after apply without claiming apply ran, and state means resources returned from the selected state
+        - Resource and Instance structure
+        - absolute Address is required per Instance; index_key is optional and preserves a canonical JSON scalar token
+        - provider is optional and emitted only when established by the input
+        - missing attribute differs from known null and unknown
+        - every Value requires state known or unknown
+        - known Value requires value, including when value is JSON null
+        - unknown Value forbids value and omits type
+        - optional type is only a known JSON-native kind: null, boolean, number, string, object, or array
+        - type does not claim Terraform static type; unknown placeholders never provide a type
+        - object and array containers recursively contain child Values
+        - recursive sensitivity is preserved and effective sensitivity inherits from ancestors
+        - exact decimal JSON number precision without floating point
+        - arrays preserve emitted order and JSON shape does not infer list, tuple, set, map, or Terraform collection kind
+      terraform_mapping:
+        plan_membership_and_values: planned_values tree only
+        state_membership_and_values: values tree only
+        resource_changes: exact-address join contributes after_unknown and after_sensitive masks only
+        change_after_fallback: forbidden
+        recursive_masks: true unknown paths override placeholders and true sensitive paths mark matching descendants
+        sparse_masks: explicit unknown paths absent from values materialize unknown Values; absent paths in both remain absent
+        mask_absence: does not erase known values or infer unknown
+        planned_sensitive_values: merged recursively with after_sensitive by logical OR
+      external_input_boundary: terraform-show-json
+      forbidden: [fabricated-origin, fabricated-provider, terraform-plan-envelope-as-IR, change-after-value-fallback, inferred-terraform-static-type, inferred-collection-kind]
+  - id: DEC-TRANSFORM-V1
+    level: system_design
+    kind: design_choice
+    statement: >-
+      transform-v1 has a common framed I/O contract for every Transform. The
+      initial source-to-transform projection is JSON Lines with one record per
+      source Instance and explicit Resource/Instance context. After operators
+      run, output records may use any operator-declared projection, including
+      aggregation; the initial projection does not constrain all later record
+      shapes.
+    attributes:
+      contract_id: transform
+      version: 1
+      body_media_type: application/x-ndjson
+      initial_projection:
+        granularity: one-record-per-Instance
+        required_context: [Address, Resource, Instance]
+        preserves_value_semantics: [missing, known-null, unknown, sensitivity, exact-number]
+      post_operator_projection: arbitrary-if-declared
+      uniformity: all-transforms-share-the-same-I/O-contract
+  - id: DEC-OPERATOR-CONTRACTS
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Each Transform and Sink independently declares input field requirements,
+      field types, preconditions, and output guarantees. A stage validates the
+      contract it consumes and returns an explicit contract error on mismatch.
+      Common required fields may be added only when justified by cross-operator
+      semantics; no operator's private requirements become global defaults.
+    attributes:
+      declaration_dimensions: [required-fields, types, preconditions, output-guarantees]
+      incompatibility: explicit-error
+      plugin_boundary: independently-versioned-contract
+  - id: DEC-METADATA-ENVELOPE
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Recommended candidate: represent each transform-v1 JSONL record as an
+      envelope with separate metadata and data members. Metadata carries
+      derivable provenance and grouping/control context; data carries the
+      operator's projected record. Operators declare which metadata they
+      preserve, replace, or combine. This avoids forcing provenance or group
+      controls into every domain projection while allowing aggregation rules
+      to state how source identities are retained.
+    attributes:
+      recommendation: envelope-with-metadata-and-data
+      candidate_shape:
+        metadata: {source, address, group}
+        data: operator-defined-object
+      rationale: [provenance-separation, projection-independence, explicit-group-control]
+      alternatives:
+        - inline provenance and grouping fields in data; simplest shape, but risks collisions and makes projection schemas carry control data
+        - side channel keyed by record ordinal; keeps payload clean, but complicates streaming, reordering, and aggregation provenance
+      decision_status: proposed-not-final
+  - id: DEC-SOURCE-COMPOSITION
+    level: system_design
+    kind: design_choice
+    statement: >-
+      terraform-relay converts every source-v1 document into transform-v1
+      records and concatenates those records in configuration-declared source
+      order. Each source's internal record order is preserved. Source identity
+      accompanies each record; equal Address values from different sources
+      remain distinct and detectable. No implicit deduplication or sorting is
+      performed.
+    attributes:
+      ordering: declared-source-order-then-source-internal-order
+      address_collision: preserve-both-with-distinguishable-source-provenance
+      deduplication: none
+  - id: DEC-ORCHESTRATOR
+    level: system_design
+    kind: design_choice
+    statement: >-
+      terraform-relay is the process and contract orchestration boundary. It
+      launches plugins, propagates abnormal termination, converts only at
+      declared contract boundaries, connects multiple sources and sinks, and
+      preserves stream ordering. Transform and Sink domain behavior remains in
+      those plugins.
+    attributes:
+      responsibilities: [process-execution, abnormal-exit-propagation, boundary-conversion, source-sink-connection]
+      prohibited_knowledge: [groupby-semantics, operator-specific-field-rules, sink-layout-rules]
+  - id: DEC-SINK-V1
+    level: system_design
+    kind: design_choice
+    statement: >-
+      sink-v1 is an independent output contract rather than a promise to retain
+      RelayData structure. It consumes declared transform-v1 records and
+      produces a Sink-defined output representation; identity mapping is
+      allowed. The Sink owns mapping logical group values to physical pages,
+      sheets, files, or other destination units.
+    attributes:
+      contract_id: sink
+      version: 1
+      output_body: sink-defined-contract
+      identity_mapping_allowed: true
+      physical_group_projection_owner: sink
+  - id: DEC-OPERATOR-ALGEBRA
+    level: system_design
+    kind: design_choice
+    statement: >-
+      The operator family is described by shared invariants, target granularity,
+      composition rules, and deterministic ordering, while each operator's
+      detailed schema and algorithm is deferred to a later design. groupby
+      partitions records by keys and does not itself aggregate values;
+      aggregate is a distinct reduction over a declared group. select and
+      where operate on records, sortby orders records by declared keys, and
+      distinctby retains records under an explicit equality/key rule.
+    attributes:
+      shared_invariants:
+        - deterministic output for identical contract, input, and parameters
+        - preserve source order unless operator semantics explicitly reorder
+        - ordering ties use stable input order unless a later contract decides otherwise
+        - required fields, null/unknown handling, and sensitivity behavior are declared per operator
+        - composition is explicit; operators do not assume hidden Resource.Type, Provider, or Name joins
+      target_granularity: transform-v1-record
+      operators: [groupby, sortby, distinctby, select, where, aggregate]
+      groupby: partition-only-no-value-reduction
+      aggregate: explicit-reduction-separate-from-groupby
+      legacy-workaround: >-
+        Fixed Resource.Type/Provider grouping and Name-based joining reflect the
+        previous resource-shaped representation and the parameter-sheet use
+        case; they are not universal domain invariants.
+  - id: DEC-EXTENSIBILITY
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Contracts are published as versioned JSON Schemas with shared fixtures
+      and standalone compatibility tests. External repositories can implement
+      plugins by consuming those artifacts and testing independently, without
+      importing terraform-relay implementation internals.
+    attributes:
+      artifacts: [versioned-json-schema, fixtures, standalone-compatibility-tests]
+      external-plugin-development: supported-by-contract-artifacts
+  - id: OBS-PR6-INPUT
+    level: implementation
+    kind: repository_observation
+    statement: >-
+      PR #6 proposes an XLSX sink as an independent Go module consuming the
+      existing RelayData v1 stream, with flattened attribute paths, sensitive
+      value redaction, unknown markers, atomic replacement, and a compatibility
+      schema/fixture path. The requested residual topics are consistency
+      between type and value, validating expected golden output, and duplicate
+      pass work. These are user-designated review topics, not findings in
+      existing GitHub review feedback; PR #6 has no such review feedback.
+    provenance:
+      origin: observed
+      source_refs: [DEC-SOURCE-V1, DEC-SINK-V1, DEC-EXTENSIBILITY]
+      artifact_refs:
+        - uri: https://github.com/kamichidu/go-tfrelay/pull/6
+          revision: da033b1824d12c664a1aff7ebd9c3a06f3ac9790
+          role: design-input-open-unmerged-PR
+    attributes:
+      state: open-unmerged
+      inherited_as: design-input-only
+      residual_review_topics: [type-value-alignment, expected-golden-validation, duplicate-pass-work]
+  - id: DEC-VALIDATION-ARTIFACTS
+    level: system_design
+    kind: design_choice
+    statement: >-
+      Each contract version has an authoritative JSON Schema and fixtures for
+      valid, invalid, and boundary cases. Compatibility tests run independently
+      of terraform-relay and verify that in-repository and external plugins
+      agree on framing and semantics. Golden expected results are actively
+      compared, including declared type/value consistency where the contract
+      can establish it.
+    attributes:
+      artifacts_per_contract: [json-schema, valid-fixtures, invalid-fixtures, compatibility-tests]
+      golden_validation: compare-generated-output-to-expected
+      type_value_consistency: validate-where-contract-defines-type
+relations:
+  - id: REL-SOURCE-REQ
+    from: DEC-SOURCE-V1
+    type: depends_on
+    to: REQ-SEMANTIC-PRESERVATION
+  - id: REL-CONTRACTS-REQ
+    from: DEC-FRAMING
+    type: depends_on
+    to: REQ-INDEPENDENT-CONTRACTS
+  - id: REL-TRANSFORM-REQ
+    from: DEC-TRANSFORM-V1
+    type: depends_on
+    to: REQ-UNIFORM-TRANSFORM
+  - id: REL-OPERATOR-ERROR-REQ
+    from: DEC-OPERATOR-CONTRACTS
+    type: depends_on
+    to: REQ-ERROR-BOUNDARY
+  - id: REL-MULTISOURCE-REQ
+    from: DEC-SOURCE-COMPOSITION
+    type: depends_on
+    to: REQ-DETERMINISTIC-SOURCES
+  - id: REL-ORCHESTRATION-REQ
+    from: DEC-ORCHESTRATOR
+    type: depends_on
+    to: REQ-ORCHESTRATION-BOUNDARY
+  - id: REL-PR6-OBSERVATION
+    from: OBS-PR6-INPUT
+    type: supports
+    to: DEC-VALIDATION-ARTIFACTS
+observations:
+  - id: OBS-MAIN-SEMANTICS
+    subject: DEC-SOURCE-V1
+    activity: Inspected main-branch source contract and implementation at c43ec81.
+    claims: [DEC-SOURCE-V1]
+    artifact_refs:
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/main/design-ir/source-show-json.yaml
+        revision: c43ec81adb1ef3ee25996629f3ff97a8d9c318cb
+        role: semantic-source
+      - uri: https://github.com/kamichidu/go-tfrelay/blob/main/types.go
+        revision: c43ec81adb1ef3ee25996629f3ff97a8d9c318cb
+        role: implementation-observation
+    agent: Codex repository inspection
+  - id: OBS-PR6-REVIEW
+    subject: OBS-PR6-INPUT
+    activity: Inspected open PR #6 metadata, changed paths, and available review material.
+    claims: [OBS-PR6-INPUT]
+    artifact_refs:
+      - uri: https://github.com/kamichidu/go-tfrelay/pull/6
+        revision: da033b1824d12c664a1aff7ebd9c3a06f3ac9790
+        role: pull-request-head
+    agent: Codex repository inspection
+open_items:
+  - id: OPEN-METADATA-SHAPE
+    statement: >-
+      Select the normative metadata/data envelope field names and exact source
+      provenance representation after comparing envelope, inline, and side
+      channel candidates against streaming reorder and aggregation behavior.
+    status: open
+    related_refs: [DEC-METADATA-ENVELOPE, DEC-TRANSFORM-V1]
+  - id: OPEN-ADDRESS-COLLISION
+    statement: >-
+      Decide whether address collisions across distinct sources remain valid
+      with source-qualified identity, produce a diagnostic, or can be rejected
+      by a configurable policy; implicit deduplication remains prohibited.
+    status: open
+    related_refs: [DEC-SOURCE-COMPOSITION]
+  - id: OPEN-OPERATOR-DETAILS
+    statement: >-
+      Specify per-operator field/type schemas, null and unknown behavior,
+      sensitivity propagation, equality rules, stable tie handling, and
+      composition constraints in a subsequent operator design.
+    status: deferred
+    related_refs: [DEC-OPERATOR-ALGEBRA, DEC-OPERATOR-CONTRACTS]
+  - id: OPEN-SINK-V1-SHAPE
+    statement: >-
+      Choose the concrete sink-v1 envelope and its compatibility policy,
+      including whether a Sink consumes transform records directly or declares
+      a sink-specific projection adapter.
+    status: open
+    related_refs: [DEC-SINK-V1, DEC-TRANSFORM-V1]
+  - id: OPEN-ERROR-CHANNEL
+    statement: >-
+      Specify how framed contract errors are represented across process
+      boundaries, including stderr diagnostics, exit status, and whether a
+      structured error body is needed without confusing it with successful
+      contract data.
+    status: open
+    related_refs: [DEC-FRAMING, DEC-OPERATOR-CONTRACTS, DEC-ORCHESTRATOR]
+  - id: OPEN-SCHEMA-IDENTITY
+    statement: >-
+      Define schema URI, immutable revision and digest policy, and compatibility
+      negotiation for independently published source-v1, transform-v1, and
+      sink-v1 schemas.
+    status: open
+    related_refs: [REQ-INDEPENDENT-CONTRACTS, DEC-EXTENSIBILITY]
+  - id: OPEN-PR6-REVIEW-DETAIL
+    statement: >-
+      Resolve type/value alignment rules for each JSON-native Value shape,
+      ensure generated XLSX golden outputs are compared with expected fixtures,
+      and remove or justify redundant processing passes in plugin implementation.
+      These remain inputs for later contract and implementation work; this
+      design document does not alter PR #6.
+    status: open
+    related_refs: [OBS-PR6-INPUT, DEC-VALIDATION-ARTIFACTS]
+  - id: OPEN-ORDERING-SEMANTICS
+    statement: >-
+      Define which operators preserve, reorder, or combine source order and
+      the deterministic tie-breaking rule for each ordering operation.
+    status: deferred
+    related_refs: [DEC-OPERATOR-ALGEBRA]
+representation_gaps: []
