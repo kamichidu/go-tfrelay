@@ -97,14 +97,45 @@ nodes:
     kind: design_choice
     statement: >-
       Each process boundary uses MIME Header fields, a blank line, a body, and
-      EOF. Contract identity, contract version, and Content-Type are carried in
-      headers. Headers describe facts uniform over the complete body/stream
-      only; facts that vary by record are carried in record metadata. A process
-      invocation exchanges one framed document; body format is contract-specific.
+      EOF. Every frame requires exactly one Contract-ID (source, transform, or
+      sink), Contract-Version (1), and Content-Type header. Headers describe
+      facts uniform over the complete body/stream only; facts that vary by
+      record are carried in record metadata. A process invocation exchanges
+      one framed document; body format is contract-specific.
     attributes:
       framing:
         sequence: [headers, blank-line, body, EOF]
-        headers_include: [contract-id, contract-version, Content-Type]
+        required_headers:
+          Contract-ID: [source, transform, sink]
+          Contract-Version: "1"
+          Content-Type:
+            source: application/json
+            transform: application/x-ndjson
+            sink: application/x-ndjson
+        proposed_protocol_details:
+          content_type_values_status: proposed-media-types-application-json-and-application-x-ndjson
+          header_names: ASCII case-insensitive; required names occur exactly once
+          header_line_ending: CRLF
+          header_separator: CRLF CRLF
+          body_encoding: valid UTF-8 without BOM
+          body_line_endings: source JSON uses JSON whitespace; JSONL accepts LF or CRLF record separators and rejects bare CR and blank records
+          EOF: required; exactly one frame per process stream; trailing bytes or a second frame are rejected
+          duplicate_headers: reject duplicate field names case-insensitively; every required field occurs exactly once
+          unknown_headers: ignore unless a later protocol extension assigns semantics
+          empty_body: invalid for source JSON; valid zero-record stream for transform/sink JSONL
+          contract_mismatch: reject before body processing when ID, version, or media type does not match the invoked boundary
+          detail_status: proposed-protocol-detail-subject-to-independent-review
+        validation_layers:
+          protocol_framing_and_termination: validate headers, separator, encoding, line endings, one-frame boundary, and complete EOF-terminated frame; this is separate from JSON Schema validation
+          contract_body: validate the complete JSON document against its selected versioned body schema, including no trailing non-whitespace JSON; JSONL parses and schema-validates every complete record and consumes the complete stream
+          process_termination: independently require successful process exit; propagate nonzero exit even if a valid frame was emitted
+          responsibility_boundary: JSON Schema validates body/record shape and declared semantic constraints; protocol validation validates framing/termination; neither substitutes for the other
+        examples:
+          source_headers: ["Contract-ID: source", "Contract-Version: 1", "Content-Type: application/json"]
+          transform_headers: ["Contract-ID: transform", "Contract-Version: 1", "Content-Type: application/x-ndjson"]
+          empty_transform_body: valid-zero-record-stream
+          empty_source_body: invalid-incomplete-json-document
+          source_body: '{"ir_version":1,"snapshot_kind":"state","resources":[]}'
         body_is_contract_specific: true
   - id: DEC-SOURCE-V1
     level: system_design
@@ -129,6 +160,7 @@ nodes:
       contract_id: source
       version: 1
       preserved_semantics:
+        - top-level body contains ir_version: 1, snapshot_kind planned|state, and resources
         - ir_version is explicitly 1; missing or unsupported version is rejected
         - snapshot_kind is required with exact values planned or state; planned means resources Terraform plans to exist after apply without claiming apply ran, and state means resources returned from the selected state
         - Resource and Instance structure
@@ -173,10 +205,41 @@ nodes:
       body_media_type: application/x-ndjson
       initial_projection:
         granularity: one-record-per-Instance
-        required_context: [Address, Resource, Instance]
+        required_context: [metadata.source, metadata.snapshot_kind, data.resource, data.instance]
         preserves_source_v1_semantics: [missing, known-null, unknown, sensitivity, exact-number, provider-when-known, snapshot_kind]
+        exact_lossless_mapping:
+          resource_fields: repeated in each record emitted for that Resource's Instances
+          metadata:
+            source: stable identity for the originating Source instance; proposed encoding is a non-empty opaque UTF-8 string unique within the composed stream
+            snapshot_kind: exact planned|state value copied from source-v1
+          data:
+            resource:
+              type: Resource.Type
+              name: Resource.Name
+              provider: Resource.Provider; omit when source-v1 omits it
+            instance:
+              address: Instance.Address
+              index_key: Instance.IndexKey; omit when source-v1 omits it
+              attributes: Instance.Attributes, preserving recursive Value JSON and exact number tokens
+              sensitive_attributes: Instance.SensitiveAttributes, preserving its JSON structure
+        record_example: >-
+          {"metadata":{"source":"source-a","snapshot_kind":"planned"},"data":{"resource":{"type":"aws_instance","name":"web","provider":"registry.terraform.io/hashicorp/aws"},"instance":{"address":"aws_instance.web[0]","index_key":"0","attributes":{"id":{"state":"unknown"}},"sensitive_attributes":{}}}}
         varying_source_facts: per-record-metadata
+        record_order: preserve source-v1 resource and instance iteration order
         preservation_ends_after: initial-source-v1-to-transform-v1-projection
+      record_contract:
+        body: UTF-8 JSON Lines; each record is one complete JSON object
+        required_members: [metadata, data]
+        required_member_types: {metadata: object, data: object}
+        member_internals: operator-specific except for the initial projection mapping above
+        empty_stream: valid; zero records
+        blank_lines: invalid
+        record_separator: LF or CRLF; bare CR rejected
+        final_line_terminator: optional record separator
+        protocol_detail_status: proposed-protocol-detail-subject-to-independent-review
+        later_projection: records retain metadata/data object envelope; internals may be changed or removed by the selected operator contract
+        example_initial_record: '{"metadata":{"source":"source-a","snapshot_kind":"planned"},"data":{"resource":{"type":"aws_instance","name":"web"},"instance":{"address":"aws_instance.web[0]","index_key":"0","attributes":{},"sensitive_attributes":{}}}}'
+        example_later_projection: '{"metadata":{},"data":{"sheet":"network","count":2}}'
       post_operator_projection: arbitrary-if-declared
       post_projection_semantics: governed-by-selected-operator-contract
       uniformity: all-transforms-share-the-same-I/O-contract
@@ -208,13 +271,15 @@ nodes:
     attributes:
       recommendation: envelope-with-metadata-and-data
       candidate_shape:
-        metadata: {source, address, snapshot_kind, group}
+        metadata: {source, snapshot_kind, group}
         data: operator-defined-object
+      required_transform_record_shape: {metadata: object, data: object}
       rationale: [provenance-separation, projection-independence, explicit-group-control]
       alternatives:
         - inline provenance and grouping fields in data; simplest shape, but risks collisions and makes projection schemas carry control data
         - side channel keyed by record ordinal; keeps payload clean, but complicates streaming, reordering, and aggregation provenance
-      decision_status: proposed-not-final
+      decision_status: metadata-data-envelope-selected; exact source-identity encoding and aggregation provenance remain proposed
+      alternatives_status: inline-control-fields-and-ordinal-sidechannel-are-alternatives-not-selected-for-v1
   - id: DEC-SOURCE-COMPOSITION
     level: system_design
     kind: design_choice
@@ -229,7 +294,26 @@ nodes:
     attributes:
       ordering: declared-source-order-then-source-internal-order
       address_collision: preserve-both-with-distinguishable-source-provenance
+      address_collision_rejection: not-a-base-policy
+      optional_collision_validation: an explicitly selected Transform may validate collisions under its own declared contract
       deduplication: none
+      collision_records_example:
+        - '{"metadata":{"source":"state-a","snapshot_kind":"state"},"data":{"resource":{"type":"aws_instance","name":"web"},"instance":{"address":"aws_instance.web[0]","attributes":{},"sensitive_attributes":{}}}}'
+        - '{"metadata":{"source":"plan-b","snapshot_kind":"planned"},"data":{"resource":{"type":"aws_instance","name":"web"},"instance":{"address":"aws_instance.web[0]","attributes":{},"sensitive_attributes":{}}}}'
+      no_transform_selected: >-
+        Emit the initial source-v1 to transform-v1 projection, then apply the
+        common identity-body conversion to sink-v1 with only the frame headers
+        changed; no Transform-specific operator is implied.
+      mixed_snapshot_example: >-
+        One combined transform-v1 stream may contain a state record with
+        metadata.snapshot_kind=state followed by a planned record with
+        metadata.snapshot_kind=planned. Both use the same stream headers
+        (Contract-ID transform, Contract-Version 1, Content-Type
+        application/x-ndjson) because snapshot_kind varies per record.
+      address_collision_example: >-
+        Two source records may both have data.instance.address
+        aws_instance.web[0]; metadata.source distinguishes their origins and
+        both records remain in declared-source order.
   - id: DEC-ORCHESTRATOR
     level: system_design
     kind: design_choice
@@ -252,15 +336,19 @@ nodes:
       common transform-v1 to sink-v1 conversion. A Sink consumes sink-v1 and
       owns its physical output behavior, including mapping logical group values
       to pages, sheets, files, or other destination units. The exact sink-v1
-      representation remains open; identity conversion is one possible design.
+      record shape is the transform-v1 metadata/data object envelope per
+      JSONL record. The common conversion is an identity body mapping with the
+      frame headers changed to Contract-ID sink, Contract-Version 1, and
+      Content-Type application/x-ndjson. Compatibility policy remains open.
     attributes:
       contract_id: sink
       version: 1
       direction: input-to-sink
       conversion_owner: terraform-relay-common-adapter
       physical_output_owner: individual-sink
-      exact_representation: open
-      identity_conversion_candidate: true
+      record_shape: transform-v1-metadata-data-envelope
+      conversion: identity-body-and-switch-frame-headers
+      compatibility_policy: open
       physical_group_projection_owner: sink
   - id: DEC-OPERATOR-ALGEBRA
     level: system_design
@@ -326,13 +414,20 @@ nodes:
     kind: design_choice
     statement: >-
       Each contract version has an authoritative JSON Schema and fixtures for
-      valid, invalid, and boundary cases. Compatibility tests run independently
-      of terraform-relay and verify that in-repository and external plugins
-      agree on framing and semantics. Golden expected results are actively
-      compared, including declared type/value consistency where the contract
-      can establish it.
+      valid, invalid, and boundary cases. JSON Schema validates body and
+      per-record structure/declared semantic constraints only. Separate
+      protocol validation checks headers, separators, encoding, line framing,
+      and EOF/termination; protocol success does not prove body validity, and
+      schema validity does not prove framing or successful process exit.
+      Compatibility tests run independently of terraform-relay and verify
+      that in-repository and external plugins agree on both layers. Golden
+      expected results are actively compared, including declared type/value
+      consistency where the contract can establish it.
     attributes:
       artifacts_per_contract: [json-schema, valid-fixtures, invalid-fixtures, compatibility-tests]
+      body_validation: [source-json-document, every-transform-jsonl-record, every-sink-jsonl-record]
+      protocol_validation: [required-headers, header-uniqueness, blank-line-separator, UTF-8, record-delimiters, EOF, process-exit-status]
+      validation_layers_are_independent: true
       golden_validation: compare-generated-output-to-expected
       type_value_consistency: validate-where-contract-defines-type
 relations:
@@ -389,18 +484,13 @@ observations:
 open_items:
   - id: OPEN-METADATA-SHAPE
     statement: >-
-      Select the normative metadata/data envelope field names and exact source
-      provenance representation after comparing envelope, inline, and side
-      channel candidates against streaming reorder and aggregation behavior.
+      Decide the exact source-identity encoding/assignment and the provenance
+      rule when an operator aggregates or combines records. The initial
+      metadata.source and metadata.snapshot_kind fields and the transform-v1
+      metadata/data object envelope are selected; this item does not reopen
+      those contract requirements.
     status: open
     related_refs: [DEC-METADATA-ENVELOPE, DEC-TRANSFORM-V1]
-  - id: OPEN-ADDRESS-COLLISION
-    statement: >-
-      Decide whether address collisions across distinct sources remain valid
-      with source-qualified identity, produce a diagnostic, or can be rejected
-      by a configurable policy; implicit deduplication remains prohibited.
-    status: open
-    related_refs: [DEC-SOURCE-COMPOSITION]
   - id: OPEN-OPERATOR-DETAILS
     statement: >-
       Specify per-operator field/type schemas, null and unknown behavior,
@@ -408,12 +498,12 @@ open_items:
       composition constraints in a subsequent operator design.
     status: deferred
     related_refs: [DEC-OPERATOR-ALGEBRA, DEC-OPERATOR-CONTRACTS]
-  - id: OPEN-SINK-V1-SHAPE
+  - id: OPEN-SINK-V1-COMPATIBILITY
     statement: >-
-      Choose the exact sink-v1 record/envelope representation and its
-      compatibility policy. The Sink input remains sink-v1, and terraform-relay
-      owns the common transform-v1 to sink-v1 conversion; this open item does
-      not reopen those boundaries.
+      Choose the sink-v1 compatibility and version-negotiation policy. Its
+      JSONL metadata/data object record shape, Sink input boundary, and common
+      terraform-relay transform-v1 to sink-v1 identity-body conversion with
+      switched headers are selected and are not reopened by this item.
     status: open
     related_refs: [DEC-SINK-V1, DEC-TRANSFORM-V1]
   - id: OPEN-ERROR-CHANNEL
